@@ -238,6 +238,9 @@ static int lastpc_start(void)
 	return 0;
 }
 
+#ifdef CONFIG_PSTORE_RAM
+extern void ramoops_append_plat_log(const char *fmt, ...);
+#endif
 static int __init lastpc_init(void)
 {
 	int ret = 0;
@@ -272,7 +275,9 @@ static int __init lastpc_init(void)
 	 * (MCUSYS might be turned off before lastpc_dump())
 	 */
 	lastpc_dump(lastpc_dump_buf, lastpc_drv.cur_plt->min_buf_len);
-
+#ifdef CONFIG_PSTORE_RAM
+	ramoops_append_plat_log(lastpc_dump_buf);
+#endif
 	return 0;
 }
 
