@@ -497,7 +497,6 @@ char __attribute__ ((weak)) *spm_suspend_map_status(u32 step)
 static int ram_console_lastk_show(struct ram_console_buffer *buffer, struct seq_file *m, void *v)
 {
 	unsigned int wdt_status;
-	int cpu;
 
 	if (!buffer) {
 		pr_err("ram_console: buffer is null\n");
@@ -539,20 +538,6 @@ static int ram_console_lastk_show(struct ram_console_buffer *buffer, struct seq_
 		seq_write(m, buffer, ram_console_buffer->sz_buffer);
 	}
 #endif
-	aee_rr_show_last_pc(m);
-
-	for (cpu = 0; cpu < num_possible_cpus(); cpu++) {
-		seq_printf(m, "CPU %d\n", cpu);
-		aee_rr_show_rgidle_footprint(m, cpu);
-		aee_rr_show_mcdi_footprint(m, cpu);
-		aee_rr_show_sodi_cpu(m, cpu);
-		aee_rr_show_sodi3_cpu(m, cpu);
-		aee_rr_show_deepidle_cpu(m, cpu);
-		aee_rr_show_spm_suspend_cpu(m, cpu);
-	}
-
-	seq_printf(m, "%s\n", get_dvfsrc_latch_info());
-
 	return 0;
 }
 
@@ -588,6 +573,56 @@ static int __init ram_console_save_old(struct ram_console_buffer *buffer, size_t
 	return 0;
 }
 
+#ifdef CONFIG_PSTORE_RAM
+extern void ramoops_append_plat_log(const char *fmt, ...);
+static void append_log_to_ramoops(void)
+{
+	int cpu;
+
+	if (ram_console_check_header(ram_console_old) && ram_console_old->sz_buffer != 0)
+		return;
+
+	for (cpu = 0; cpu < num_possible_cpus(); cpu++) {
+		ramoops_append_plat_log("CPU %d\n", cpu);
+
+		if (LAST_RRR_VAL(rgidle_footprint[cpu]))
+			ramoops_append_plat_log("  rgidle           : Stuck in wfi (0x%x)\n",
+						 LAST_RRR_VAL(rgidle_footprint[cpu]));
+		else
+			ramoops_append_plat_log("  rgidle           : leave wfi successful !! (0x%x)\n",
+						 LAST_RRR_VAL(rgidle_footprint[cpu]));
+
+		if (LAST_RRR_VAL(mcdi_footprint[cpu]))
+			ramoops_append_plat_log("  mcdi             : Stuck in CPU/CLUSTER off (0x%x)\n",
+						 LAST_RRR_VAL(mcdi_footprint[cpu]));
+		else
+			ramoops_append_plat_log("  mcdi             : leave CPU/CLUSTER off successful !! (0x%x)\n",
+						 LAST_RRR_VAL(mcdi_footprint[cpu]));
+
+		if ((LAST_RRR_VAL(sodi_data) >> 24) == cpu)
+			ramoops_append_plat_log("  sodi             : %s (0x%x)\n",
+						sodi_map_status(LAST_RRR_VAL(sodi_data)),
+						LAST_RRR_VAL(sodi_data));
+
+		if ((LAST_RRR_VAL(sodi3_data) >> 24) == cpu)
+			ramoops_append_plat_log("  sodi3            : %s (0x%x)\n",
+						sodi3_map_status(LAST_RRR_VAL(sodi3_data)),
+						LAST_RRR_VAL(sodi3_data));
+
+
+		if ((LAST_RRR_VAL(deepidle_data) >> 24) == cpu)
+			ramoops_append_plat_log("  deepidle         : %s (0x%x)\n",
+						dpidle_map_status(LAST_RRR_VAL(deepidle_data)),
+						LAST_RRR_VAL(deepidle_data));
+
+		if ((LAST_RRR_VAL(spm_suspend_data) >> 24) == cpu)
+			ramoops_append_plat_log("  spm_suspend      : %s (0x%x)\n",
+						spm_suspend_map_status(LAST_RRR_VAL(spm_suspend_data)),
+						LAST_RRR_VAL(spm_suspend_data));
+	}
+}
+#endif
+
 static int __init ram_console_init(struct ram_console_buffer *buffer, size_t buffer_size)
 {
 	ram_console_buffer = buffer;
@@ -617,6 +652,10 @@ static int __init ram_console_init(struct ram_console_buffer *buffer, size_t buf
 #endif
 	ram_console_init_val();
 	ram_console_init_done = 1;
+
+#ifdef CONFIG_PSTORE_RAM
+	append_log_to_ramoops();
+#endif
 	return 0;
 }
 
