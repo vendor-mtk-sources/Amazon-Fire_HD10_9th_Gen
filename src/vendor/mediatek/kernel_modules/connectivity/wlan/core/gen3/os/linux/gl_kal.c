@@ -4382,6 +4382,11 @@ VOID kalIndicateRxMgmtFrame(IN P_GLUE_INFO_T prGlueInfo, IN P_SW_RFB_T prSwRfb)
 			break;
 		}
 
+		if (!prGlueInfo->fgIsRegistered) {
+			DBGLOG(AIS, WARN, "Net dev is not ready!\n");
+			break;
+		}
+
 		ucChnlNum = (UINT_8) HAL_RX_STATUS_GET_CHNL_NUM(prSwRfb->prRxStatus);
 
 		i4Freq = nicChannelNum2Freq(ucChnlNum) / 1000;
@@ -5234,6 +5239,11 @@ inline INT_32 kalPerMonInit(IN P_GLUE_INFO_T prGlueInfo)
 	KAL_CLR_BIT(PERF_MON_DISABLE_BIT, prPerMonitor->ulPerfMonFlag);
 	KAL_SET_BIT(PERF_MON_STOP_BIT, prPerMonitor->ulPerfMonFlag);
 	prPerMonitor->u4UpdatePeriod = 1000;
+
+#ifdef CONFIG_MTK_QOS_SUPPORT
+	kalInitPmQosLock();
+#endif
+
 	cnmTimerInitTimer(prGlueInfo->prAdapter,
 		&prPerMonitor->rPerfMonTimer,
 		(PFN_MGMT_TIMEOUT_FUNC) kalPerMonHandler, (ULONG) NULL);

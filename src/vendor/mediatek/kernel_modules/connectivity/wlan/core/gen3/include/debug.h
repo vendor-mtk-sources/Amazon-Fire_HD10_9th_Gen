@@ -184,6 +184,7 @@ enum DRV_STATUS_T {
 #define MAC2STR(a)	a
 /* ((PUINT_8)a)[0], ((PUINT_8)a)[1], ((PUINT_8)a)[2], ((PUINT_8)a)[3], ((PUINT_8)a)[4], ((PUINT_8)a)[5] */
 
+#if CFG_SHOW_IP
 /* Debug print format string for the IPv4 Address */
 #define IPV4STR         "%pI4"
 /* "%u.%u.%u.%u" */
@@ -204,7 +205,15 @@ enum DRV_STATUS_T {
  * ((PUINT_8)a)[8], ((PUINT_8)a)[9], ((PUINT_8)a)[10], ((PUINT_8)a)[11], \
  * ((PUINT_8)a)[12], ((PUINT_8)a)[13], ((PUINT_8)a)[14], ((PUINT_8)a)[15]
  */
-
+#else
+#define IPV4STR         "%02x%02x%02x%02x"
+#define IPV4TOSTR(a)    ((PUINT_8)a)[0], ((PUINT_8)a)[1], ((PUINT_8)a)[2], ((PUINT_8)a)[3]
+#define IPV6STR         "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x"
+#define IPV6TOSTR(a)     ((PUINT_8)a)[0], ((PUINT_8)a)[1], ((PUINT_8)a)[2], ((PUINT_8)a)[3], \
+                         ((PUINT_8)a)[4], ((PUINT_8)a)[5], ((PUINT_8)a)[6], ((PUINT_8)a)[7], \
+                         ((PUINT_8)a)[8], ((PUINT_8)a)[9], ((PUINT_8)a)[10], ((PUINT_8)a)[11], \
+                         ((PUINT_8)a)[12], ((PUINT_8)a)[13], ((PUINT_8)a)[14], ((PUINT_8)a)[15]
+#endif
 /* The pre-defined format to dump the value of a varaible with its name shown. */
 #define DUMPVAR(variable, format)           (#variable " = " format "\n", variable)
 

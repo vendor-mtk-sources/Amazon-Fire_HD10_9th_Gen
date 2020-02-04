@@ -2841,12 +2841,12 @@ VOID qmProcessPktWithReordering(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_T prSwRfb,
 				u2EthType = (pucEth[ETH_TYPE_LEN_OFFSET] << 8) | pucEth[ETH_TYPE_LEN_OFFSET + 1];
 				switch (u2EthType) {
 				case ETH_P_ARP:
-					DBGLOG(QM, WARN, "Drop dup arp, op %d from %pi4, Seq %u\n",
-						(pucEthBody[6] << 8) | pucEthBody[7], &pucEthBody[14], u4SeqNo);
+					DBGLOG(QM, WARN, "Drop dup arp, op %d from [" IPV4STR "], Seq %u\n",
+						(pucEthBody[6] << 8) | pucEthBody[7], IPV4TOSTR(&pucEthBody[14]), u4SeqNo);
 					break;
 				case ETH_P_IP:
-					DBGLOG(QM, WARN, "Drop dup IP, Id 0x%02x Proto %d from %pi4, Seq %u\n",
-						*(UINT_16 *)&pucEthBody[4], pucEthBody[9], &pucEthBody[12],
+					DBGLOG(QM, WARN, "Drop dup IP, Id 0x%02x Proto %d from [" IPV4STR "], Seq %u\n",
+						*(UINT_16 *)&pucEthBody[4], pucEthBody[9], IPV4TOSTR(&pucEthBody[12]),
 						u4SeqNo);
 					break;
 				default:

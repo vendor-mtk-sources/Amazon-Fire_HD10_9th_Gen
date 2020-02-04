@@ -625,6 +625,8 @@
 
 #define CFG_UNITEST_P2P                         0
 
+#define CFG_SHOW_IP     0
+
 /*
  * Enable cfg80211 option after Android 2.2(Froyo) is suggested,
  * cfg80211 on linux 2.6.29 is not mature yet
