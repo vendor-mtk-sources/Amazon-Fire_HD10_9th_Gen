@@ -205,12 +205,26 @@ static bool prz_ok(struct persistent_ram_zone *prz)
 			   persistent_ram_ecc_string(prz, NULL, 0));
 }
 
+#define PLAT_LOG_BUFFER_SIZE 4096
+static char plat_log_buf[PLAT_LOG_BUFFER_SIZE + 1];
+static int plat_log_size;
+void ramoops_append_plat_log(const char *fmt, ...)
+{
+	va_list ap;
+
+	if (PLAT_LOG_BUFFER_SIZE - plat_log_size > 0) {
+		va_start(ap, fmt);
+		plat_log_size += vscnprintf(plat_log_buf + plat_log_size, PLAT_LOG_BUFFER_SIZE - plat_log_size, fmt, ap);
+		va_end(ap);
+	}
+}
+
 static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 				   int *count, struct timespec *time,
 				   char **buf, bool *compressed,
 				   struct pstore_info *psi)
 {
-	ssize_t size;
+	ssize_t size, extra_size = 0;
 	ssize_t ecc_notice_size;
 	struct ramoops_context *cxt = psi->data;
 	struct persistent_ram_zone *prz = NULL;
@@ -266,14 +280,22 @@ static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 	/* ECC correction notice */
 	ecc_notice_size = persistent_ram_ecc_string(prz, NULL, 0);
 
-	*buf = kmalloc(size + ecc_notice_size + 1, GFP_KERNEL);
+	if (*type == PSTORE_TYPE_CONSOLE) {
+		extra_size += plat_log_size;
+	}
+	*buf = kmalloc(size + ecc_notice_size + extra_size + 1, GFP_KERNEL);
 	if (*buf == NULL)
 		return -ENOMEM;
 
 	memcpy(*buf, (char *)persistent_ram_old(prz) + header_length, size);
 	persistent_ram_ecc_string(prz, *buf + size, ecc_notice_size + 1);
 
-	return size + ecc_notice_size;
+	if (*type == PSTORE_TYPE_CONSOLE && extra_size) {
+		memcpy(*buf + size + ecc_notice_size, plat_log_buf, extra_size);
+		*(char *)(*buf + size + ecc_notice_size + extra_size) = '\0';
+	}
+
+	return size + ecc_notice_size + extra_size;
 }
 
 static size_t ramoops_write_kmsg_hdr(struct persistent_ram_zone *prz,
