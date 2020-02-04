@@ -1481,7 +1481,7 @@
 	charging_host_charger_current = <1500000>;
 
 	/* battery temperature protection */
-	temp_t4_threshold = <60>;
+	temp_t4_threshold = <55>;
 	temp_t3_threshold = <45>;
 	temp_t1_threshold = <15>;
 
@@ -1516,8 +1516,8 @@
 	jeita_temp_t1_to_t2_cv_voltage = <4350000>;
 	jeita_temp_t0_to_t1_cv_voltage = <4350000>;
 	jeita_temp_below_t0_cv_voltage = <4350000>;
-	temp_t4_threshold = <60>;
-	temp_t4_thres_minus_x_degree = <55>;
+	temp_t4_threshold = <55>;
+	temp_t4_thres_minus_x_degree = <52>;
 	temp_t3_threshold = <45>;
 	temp_t3_thres_minus_x_degree = <40>;
 	temp_t2_threshold = <25>;
