@@ -723,11 +723,18 @@ static void spm_vcorefs_last_records_footprint(void)
 
 }
 
+#ifdef CONFIG_PSTORE_RAM
+extern void ramoops_append_plat_log(const char *fmt, ...);
+#endif
 static void dvfsrc_init(void)
 {
 	unsigned long flags;
 
 	spm_vcorefs_last_records_footprint();
+
+#ifdef CONFIG_PSTORE_RAM
+	ramoops_append_plat_log(latch_info);
+#endif
 
 	if (is_force_opp_enable())
 		return;
