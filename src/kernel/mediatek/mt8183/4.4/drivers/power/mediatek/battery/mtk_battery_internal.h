@@ -386,6 +386,7 @@ struct fuel_gauge_custom_data {
 	int full_tracking_bat_int2_multiply;
 
 	/* threshold */
+	int rtc_oldsoc_valid_diff;	/* 0.01 % */
 	int hwocv_swocv_diff;	/* 0.1 mv */
 	int hwocv_swocv_diff_lt;	/* 0.1 mv */
 	int hwocv_swocv_diff_lt_temp;	/* degree */

@@ -518,6 +518,7 @@ void fg_custom_init_from_header(void)
 	fg_cust_data.zcv_car_gap_percentage = ZCV_CAR_GAP_PERCENTAGE;
 
 	/* dod_init */
+	fg_cust_data.rtc_oldsoc_valid_diff = RTC_OLDSOC_VALID_DIFF;
 	fg_cust_data.hwocv_oldocv_diff = HWOCV_OLDOCV_DIFF;
 	fg_cust_data.hwocv_oldocv_diff_chr = HWOCV_OLDOCV_DIFF_CHR;
 	fg_cust_data.hwocv_swocv_diff = HWOCV_SWOCV_DIFF;

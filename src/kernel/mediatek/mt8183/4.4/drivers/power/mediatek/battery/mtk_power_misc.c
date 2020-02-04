@@ -56,7 +56,9 @@ struct shutdown_controller {
 	int batidx;
 	int lbat2_h_count;
 	struct mutex lock;
+#ifdef CONFIG_ENABLE_BATTERY_OVERHEAT_SHUTDOWN
 	struct notifier_block psy_nb;
+#endif
 };
 
 static struct shutdown_controller sdc;
@@ -491,6 +493,7 @@ static int power_misc_routine_thread(void *arg)
 	return 0;
 }
 
+#ifdef CONFIG_ENABLE_BATTERY_OVERHEAT_SHUTDOWN
 int mtk_power_misc_psy_event(
 	struct notifier_block *nb, unsigned long event, void *v)
 {
@@ -515,6 +518,7 @@ int mtk_power_misc_psy_event(
 
 	return NOTIFY_DONE;
 }
+#endif
 
 void mtk_power_misc_init(struct platform_device *pdev)
 {
@@ -523,8 +527,10 @@ void mtk_power_misc_init(struct platform_device *pdev)
 	sdc.kthread_fgtimer.callback = power_misc_kthread_fgtimer_func;
 	init_waitqueue_head(&sdc.wait_que);
 
+#ifdef CONFIG_ENABLE_BATTERY_OVERHEAT_SHUTDOWN
 	sdc.psy_nb.notifier_call = mtk_power_misc_psy_event;
 	power_supply_reg_notifier(&sdc.psy_nb);
+#endif
 
 	kthread_run(power_misc_routine_thread, &sdc, "power_misc_thread");
 }
