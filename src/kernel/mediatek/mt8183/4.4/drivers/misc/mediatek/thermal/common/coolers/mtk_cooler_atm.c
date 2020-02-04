@@ -130,10 +130,18 @@ static int g_delta_power;
 static struct thermal_cooling_device *cl_dev_adp_cpu[MAX_CPT_ADAPTIVE_COOLERS] = { NULL };
 static unsigned int cl_dev_adp_cpu_state[MAX_CPT_ADAPTIVE_COOLERS] = { 0 };
 #if defined(CLATM_SET_INIT_CFG)
+#if defined(CONFIG_CLATM_CHOOSE_HIGHER_TARGET_TJ)
+int TARGET_TJS[MAX_CPT_ADAPTIVE_COOLERS] = { 50000, 50000, 50000 };
+#else
 int TARGET_TJS[MAX_CPT_ADAPTIVE_COOLERS] = {
 	CLATM_INIT_CFG_0_TARGET_TJ, CLATM_INIT_CFG_1_TARGET_TJ, CLATM_INIT_CFG_2_TARGET_TJ };
+#endif
+#else
+#if defined(CONFIG_CLATM_CHOOSE_HIGHER_TARGET_TJ)
+int TARGET_TJS[MAX_CPT_ADAPTIVE_COOLERS] = { 55000, 0 };
 #else
 int TARGET_TJS[MAX_CPT_ADAPTIVE_COOLERS] = { 85000, 0 };
+#endif
 #endif
 
 static unsigned int cl_dev_adp_cpu_state_active;
@@ -1552,7 +1560,11 @@ static int decide_ttj(void)
 {
 	int i = 0;
 	int active_cooler_id = -1;
-	int ret = 117000;	/* highest allowable TJ */
+#if defined(CONFIG_CLATM_CHOOSE_HIGHER_TARGET_TJ)
+	int ret = 50000;	/* lowest allowable TJ */
+#else
+	int ret = 117000;       /* highest allowable TJ */
+#endif
 	int temp_cl_dev_adp_cpu_state_active = 0;
 #ifdef CONFIG_MTK_TINYSYS_SSPM_SUPPORT
 #if THERMAL_ENABLE_TINYSYS_SSPM && CPT_ADAPTIVE_AP_COOLER && PRECISE_HYBRID_POWER_BUDGET && CONTINUOUS_TM
@@ -1564,7 +1576,11 @@ static int decide_ttj(void)
 
 	for (; i < MAX_CPT_ADAPTIVE_COOLERS; i++) {
 		if (cl_dev_adp_cpu_state[i]) {
+#if defined(CONFIG_CLATM_CHOOSE_HIGHER_TARGET_TJ)
+			ret = MAX(ret, TARGET_TJS[i]);
+#else
 			ret = MIN(ret, TARGET_TJS[i]);
+#endif
 			temp_cl_dev_adp_cpu_state_active = 1;
 
 			if (ret == TARGET_TJS[i])
