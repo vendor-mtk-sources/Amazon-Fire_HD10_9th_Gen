@@ -612,6 +612,224 @@ static int _rollback_to_GPU_top_down(struct disp_layer_info *disp_info, int disp
 	return available_ovl_num;
 }
 
+/* Return value:
+ * >=0 : find sec_layer and return index
+ * -1  : no sec_layer in the whole layer
+ */
+static int get_sec_layer_index(struct disp_layer_info *disp_info, int disp_idx)
+{
+	int i = 0;
+	int sec_layer_index = -1;
+	struct layer_config *layer_info;
+
+	for (i = 0 ; i < disp_info->layer_num[disp_idx] ; i++) {
+		layer_info = &disp_info->input_config[disp_idx][i];
+		if (layer_info->secure_layer == 1) {
+			if (sec_layer_index == -1) {
+				sec_layer_index = i; /* mark layer index at the first time when we find a sec layer */
+			} else {
+				return -1; /* only support one sec layer */
+			}
+
+		}
+	}
+
+	return sec_layer_index;
+}
+
+static bool is_sec_layer_gpu_must(struct disp_layer_info *disp_info, int disp_idx, int sec_layer_index)
+{
+
+	if (disp_info->gles_head[disp_idx] == -1 || disp_info->gles_tail[disp_idx] == -1)
+		return false; /* no gpu must layer */
+
+	if (sec_layer_index >= disp_info->gles_head[disp_idx] && sec_layer_index <= disp_info->gles_tail[disp_idx])
+		return true;
+
+	return false;
+}
+
+
+
+enum CHECK_TYPE {
+	BOTTOM_UP = 0,
+	TOP_DOWN,
+	TYPE_NUM,
+};
+/* Restrictions:
+ * 1. only for primary display
+ * 2. only support one sec layer
+ * 3. sec layer is not gpu must
+ * 4. special handle doesn't support extended layer
+ *
+ * Return value:
+ * 0   : find a special handling flow and set available_ovl_number
+ * <0  : can't handle, no special handling flow
+ */
+static int do_special_handling_for_sec_layer(struct disp_layer_info *disp_info, int disp_idx, int ovl_hw_limit, int *pavailable_ovl_num)
+{
+	int ret = -EINVAL;
+	int available_ovl_num;
+	int sec_layer_index;
+	int temp_gles_head, temp_gles_tail;
+	bool available[TYPE_NUM] = {false, false};
+	bool has_gles_layer = false;
+
+	if (disp_idx != HRT_PRIMARY)
+		return ret;
+
+	sec_layer_index = get_sec_layer_index(disp_info, disp_idx);
+	if (sec_layer_index == -1)
+		return ret;
+
+	if (is_sec_layer_gpu_must(disp_info, disp_idx, sec_layer_index))
+		return ret;
+
+	/*                               layer_num <= ovl_hw_limit | layer_num > ovl_hw_limit
+	 * -----------------------------------------------------------------------------------
+	 * gpu must = 0                 |   normal rollback flow   |        case 1(need gpu to blend)
+	 * -----------------------------------------------------------------------------------
+	 * gpu must = 1                 |   normal rollback flow   |        case 2(need gpu to blend + gpu must)
+	 * sec_layer doesn't in gpu must|                          |
+	 * -----------------------------------------------------------------------------------
+	 */
+	if (disp_info->layer_num[disp_idx] <= ovl_hw_limit)
+		return ret; /* normal rollback flow can handle this case */
+
+	if (disp_info->gles_head[disp_idx] != -1 && disp_info->gles_tail[disp_idx] != -1)
+		has_gles_layer = true;
+
+	/* meet ovl hw_limit from bottom to up | meet ovl hw_limit from top to down
+	 *                                     |
+	 * gpu -- layer_num -1                 | ovl -- layer_num -1
+	 * gpu -- layer_num -2                 | ovl -- layer_num -2 (sec_layer)
+	 * gpu -- 9                            | ovl -- 9
+	 * gpu -- 8                            | ovl -- 8
+	 * gpu -- 7                            | ovl -- 7
+	 * gpu -- 6                            | gpu -- 6
+	 * gpu -- 5                            | gpu -- 5
+	 * ovl -- 4                            | gpu -- 4
+	 * ovl -- 3                            | gpu -- 3
+	 * ovl -- 2 (sec_layer)                | gpu -- 2
+	 * ovl -- 1                            | gpu -- 1
+	 * ovl -- 0                            | gpu -- 0
+	 */
+	if (sec_layer_index + 1 <= ovl_hw_limit - 1)
+		available[BOTTOM_UP] = true; /* meet ovl hw_limit from bottom to up */
+
+	if (disp_info->layer_num[disp_idx] - sec_layer_index <= ovl_hw_limit - 1)
+		available[TOP_DOWN] = true; /* meet ovl hw_limit from top to down */
+
+	if (!available[BOTTOM_UP] && !available[TOP_DOWN])
+		return ret;
+
+	/* layer_num > ovl_hw_limit, need gpu to blend */
+	if (!has_gles_layer) { /* case 1 */
+		if (available[BOTTOM_UP]) {
+			available_ovl_num = 0;
+			disp_info->gles_head[disp_idx] = ovl_hw_limit - 1;
+			disp_info->gles_tail[disp_idx] = disp_info->layer_num[disp_idx] - 1;
+			*pavailable_ovl_num = available_ovl_num;
+			return 0;
+		}
+		if (available[TOP_DOWN]) {
+			available_ovl_num = 0;
+			disp_info->gles_head[disp_idx] = 0;
+			disp_info->gles_tail[disp_idx] = disp_info->layer_num[disp_idx] - ovl_hw_limit;
+			*pavailable_ovl_num = available_ovl_num;
+			return 0;
+		}
+	} else { /* case 2 */
+		if (available[BOTTOM_UP]) {
+			temp_gles_head = ovl_hw_limit - 1;
+			temp_gles_tail = disp_info->layer_num[disp_idx] - 1;
+			/*
+			 * gpu -- layer_num -1 ->temp_gles_tail
+			 * gpu -- layer_num -2
+			 * gpu -- 9
+			 * gpu -- 8
+			 * gpu -- 7 ---------------------------->gles_must_head (pos3)
+			 * gpu -- 6
+			 * gpu -- 5 ------------>temp_gles_head
+			 * ovl -- 4 ---------------------------->gles_must_head (pos2)
+			 * ovl -- 3
+			 * ovl -- 2 (sec_layer)
+			 * ovl -- 1 ---------------------------->gles_must_head (pos1)
+			 * ovl -- 0
+			 */
+			if (disp_info->gles_head[disp_idx] < sec_layer_index) { /* pos1 */
+				/* bottom up can't handle this case, try top down */
+			} else if (disp_info->gles_head[disp_idx] >= temp_gles_head) { /* pos3 */
+				/* gpu for blending can cover gpu must , perfect !!! */
+				available_ovl_num = 0;
+				disp_info->gles_head[disp_idx] = temp_gles_head;
+				disp_info->gles_tail[disp_idx] = temp_gles_tail;
+				*pavailable_ovl_num = available_ovl_num;
+				return 0;
+			} else { /* pos2 */
+				/* gpu for blending can't cover gpu must */
+				available_ovl_num = ovl_hw_limit - 1 - disp_info->gles_head[disp_idx];
+				if (disp_info->gles_tail[disp_idx] < temp_gles_tail - available_ovl_num) {
+					disp_info->gles_tail[disp_idx] = temp_gles_tail - available_ovl_num;
+					available_ovl_num = 0;
+				} else {
+					available_ovl_num -= temp_gles_tail - disp_info->gles_tail[disp_idx];
+				}
+				*pavailable_ovl_num = available_ovl_num;
+				return 0;
+			}
+
+		}
+		if (available[TOP_DOWN]) {
+			temp_gles_head = 0;
+			temp_gles_tail = disp_info->layer_num[disp_idx] - ovl_hw_limit;
+			/*
+			 * ovl -- layer_num -1 ----------------->gles_must_tail (pos1)
+			 * ovl -- layer_num -2 (sec_layer)
+			 * ovl -- 9
+			 * ovl -- 8 ---------------------------->gles_must_tail (pos2)
+			 * ovl -- 7
+			 * gpu -- 6 ------------>temp_gles_tail
+			 * gpu -- 5
+			 * gpu -- 4 ---------------------------->gles_must_tail (pos3)
+			 * gpu -- 3
+			 * gpu -- 2
+			 * gpu -- 1
+			 * gpu -- 0 ------------>temp_gles_head
+			 */
+			if (disp_info->gles_tail[disp_idx] > sec_layer_index) { /* pos1 */
+				/* top down can't handle this case, let normal flow do what it wants to do */
+			} else if (disp_info->gles_tail[disp_idx] <= temp_gles_tail) { /* pos3 */
+				/* gpu for blending can cover gpu must , perfect !!! */
+				available_ovl_num = 0;
+				disp_info->gles_head[disp_idx] = temp_gles_head;
+				disp_info->gles_tail[disp_idx] = temp_gles_tail;
+				*pavailable_ovl_num = available_ovl_num;
+				return 0;
+			} else {  /* pos2 */
+				/*
+				 * available_ovl_num = ovl_hw_limit - 1 - (disp_info->layer_num[disp_idx] -1 - disp_info->gles_tail[disp_idx])
+				 *                   = ovl_hw_limit - disp_info->layer_num[disp_idx] + disp_info->gles_tail[disp_idx]
+				 *                   = disp_info->gles_tail[disp_idx] - (disp_info->layer_num[disp_idx] - ovl_hw_limit)
+				 *                   = disp_info->gles_tail[disp_idx] - (temp_gles_tail)
+				 */
+				available_ovl_num = disp_info->gles_tail[disp_idx] - temp_gles_tail;
+				if (disp_info->gles_head[disp_idx] > available_ovl_num) {
+					disp_info->gles_head[disp_idx] = available_ovl_num;
+					available_ovl_num = 0;
+				} else {
+					available_ovl_num -= disp_info->gles_head[disp_idx];
+				}
+				*pavailable_ovl_num = available_ovl_num;
+				return 0;
+			}
+		}
+
+	}
+
+	return ret;
+}
+
 static int rollback_to_GPU(struct disp_layer_info *disp_info, int disp_idx, int available)
 {
 	int available_ovl_num, i;
@@ -619,13 +837,14 @@ static int rollback_to_GPU(struct disp_layer_info *disp_info, int disp_idx, int 
 	struct layer_config *layer_info;
 
 	available_ovl_num = available;
-
 	if (disp_info->gles_head[disp_idx] != -1)
 		has_gles_layer = true;
 
-	available_ovl_num = _rollback_to_GPU_bottom_up(disp_info, disp_idx, available_ovl_num);
-	if (has_gles_layer)
-		available_ovl_num = _rollback_to_GPU_top_down(disp_info, disp_idx, available_ovl_num);
+	if (do_special_handling_for_sec_layer(disp_info, disp_idx, available, &available_ovl_num)) {
+		available_ovl_num = _rollback_to_GPU_bottom_up(disp_info, disp_idx, available_ovl_num);
+		if (has_gles_layer)
+			available_ovl_num = _rollback_to_GPU_top_down(disp_info, disp_idx, available_ovl_num);
+	}
 
 	/* Clear extended layer for all GLES layer */
 	for (i = disp_info->gles_head[disp_idx] ; i <= disp_info->gles_tail[disp_idx] ; i++) {
