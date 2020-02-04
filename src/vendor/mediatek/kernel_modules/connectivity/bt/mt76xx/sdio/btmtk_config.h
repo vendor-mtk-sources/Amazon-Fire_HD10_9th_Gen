@@ -17,6 +17,10 @@
 #include <linux/usb.h>
 #include <linux/version.h>
 
+/* It's for reset procedure */
+#include <linux/of_gpio.h>
+#include <linux/mmc/host.h>
+
 /**
  * Kernel configuration check
  */
@@ -29,6 +33,8 @@
  */
 #define SUPPORT_MT7662 1
 #define SUPPORT_MT7668 1
+#define SUPPORT_MT7663 1
+
 
 /**
  * Debug Level Configureation
@@ -59,9 +65,21 @@
  * WoBLE by BLE RC
  */
 #define SUPPORT_ANDROID 0 /*Linux build fail due to wake_lock, please set SUPPORT_ANDROID 0 for Linux*/
-#define SUPPORT_UNIFY_WOBLE 1
+#define SUPPORT_UNIFY_WOBLE 0
 #define SUPPORT_LEGACY_WOBLE 0
 #define BT_RC_VENDOR_DEFAULT 1
 #define BT_RC_VENDOR_S0 0
+#define SUPPORT_EINT 0
+
+#if SUPPORT_EINT
+#define WAIT_POWERKEY_TIMEOUT 5000
+#endif
+
+/**
+ * Support toggle GPIO
+ */
+#define MT76x8_PMU_EN_PIN_NAME		"mt76x8_pmu_en_gpio"
+#define MT76x8_PMU_EN_DELAY_NAME	"mt76x8_pmu_en_delay"
+#define MT76x8_PMU_EN_DEFAULT_DELAY	(5) /* Default delay 5ms */
 
 #endif /* __BTMTK_CONFIG_H__ */
