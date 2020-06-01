@@ -1572,6 +1572,7 @@ static void dip_freebuf(struct dip_imem_memory *pMemInfo)
 static signed int DIP_DumpBuffer(struct DIP_DUMP_BUFFER_STRUCT *pDumpBufStruct)
 {
 	signed int Ret = 0;
+	mutex_lock(&gDipMutex);
 
 	if (pDumpBufStruct->BytesofBufferSize > 0xFFFFFFFF) {
 		LOG_ERR("pDumpTuningBufStruct->BytesofBufferSize error");
@@ -1707,7 +1708,7 @@ static signed int DIP_DumpBuffer(struct DIP_DUMP_BUFFER_STRUCT *pDumpBufStruct)
 	}
 	/*  */
 EXIT:
-
+	mutex_unlock(&gDipMutex);
 	return Ret;
 }
 

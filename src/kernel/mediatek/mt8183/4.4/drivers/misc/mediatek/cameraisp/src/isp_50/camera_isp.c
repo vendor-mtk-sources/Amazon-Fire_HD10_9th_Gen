@@ -2336,6 +2336,21 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 			current->comm, current->pid, current->tgid);
 		return -EFAULT;
 	}
+	if ((void __user *)Param == NULL) {
+		LOG_NOTICE("Param is NULL\n");
+#ifdef EP_NO_PMQOS
+		if (Cmd != ISP_DFS_CTRL &&
+			Cmd != ISP_DFS_UPDATE &&
+			Cmd != ISP_GET_CUR_ISP_CLOCK &&
+			Cmd != ISP_SET_PM_QOS_INFO &&
+			Cmd != ISP_SET_PM_QOS &&
+			Cmd != ISP_RESET_VSYNC_CNT)
+			return -EFAULT;
+#else
+		if (Cmd != ISP_RESET_VSYNC_CNT)
+			return -EFAULT;
+#endif
+	}
 	/*  */
 	pUserInfo = (struct ISP_USER_INFO_STRUCT *)(pFile->private_data);
 	/*  */
@@ -2770,7 +2785,6 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 	case ISP_SET_PM_QOS:
 		break;
 	case ISP_GET_SUPPORTED_ISP_CLOCKS:
-
 		/* Set a default clk for EP */
 		ispclks.clklevelcnt = 1;
 		ispclks.clklevel[lv] = 546;

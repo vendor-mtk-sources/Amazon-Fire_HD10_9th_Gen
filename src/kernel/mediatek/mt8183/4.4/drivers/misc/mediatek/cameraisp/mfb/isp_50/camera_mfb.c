@@ -2315,6 +2315,11 @@ static long MFB_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 					Ret = -EFAULT;
 					goto EXIT;
 				}
+				if (mfb_MfbReq.m_pMfbConfig == NULL) {
+					log_err("NULL pointer:mfb_MfbReq.m_pMfbConfig");
+					Ret = -EFAULT;
+					goto EXIT;
+				}
 				if (copy_from_user
 				    (g_MfbEnqueReq_Struct.MfbFrameConfig,
 				     (void *)mfb_MfbReq.m_pMfbConfig,
