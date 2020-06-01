@@ -109,10 +109,14 @@ static struct work_struct			cabc_work;
 * 2. lcm_platform_driver
 * 3. lcm_driver
 */
+/*
+* #define VID_KD1_OTA7290B	0x2  abandon from HVT 1.1
+* BOE with OTA7290B resue this ID from MT phase
+*/
 
 #define VID_INX_OTA7290B	0x0		/* Innolux with OTA7290B */
 #define VID_BOE_NT51021B	0x1		/* BOE with NT51021B */
-#define VID_KD1_OTA7290B	0x2		/* KD(CPT) with OTA7290B */
+#define VID_BOE_OTA7290B	0x2		/* BOE with OTA7290B */
 #define VID_KD2_OTA7290B	0x3		/* KD(INX) with OTA7290B */
 #define VID_NULL			0xff	/* NULL */
 
@@ -463,7 +467,7 @@ static int lcm_driver_probe(struct device *dev, void const *data)
 	g_vendor_id = get_lcm_id();
 
 	if ((g_vendor_id == VID_INX_OTA7290B) ||
-		(g_vendor_id == VID_KD1_OTA7290B) ||
+		(g_vendor_id == VID_BOE_OTA7290B) ||
 		(g_vendor_id == VID_KD2_OTA7290B)) {
 		LCM_LOGI("lcm probe success, Panel ID = %x", g_vendor_id);
 	} else {
@@ -688,7 +692,7 @@ static void init_lcm_registers(void)
 
 	switch (g_vendor_id) {
 	case VID_INX_OTA7290B:
-	case VID_KD1_OTA7290B:
+	case VID_BOE_OTA7290B:
 	case VID_KD2_OTA7290B:
 		LCM_LOGI("Init panel-id(0x%x, 0x%x) registers(v2)",
 			g_vendor_id, g_board_rev);
