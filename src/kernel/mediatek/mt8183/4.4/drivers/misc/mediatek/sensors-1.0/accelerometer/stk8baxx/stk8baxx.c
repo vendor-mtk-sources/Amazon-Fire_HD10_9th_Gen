@@ -3482,15 +3482,21 @@ static int stk_suspend(struct device *dev)
 		u8 val = 0;
 
 		if (stk8baxx_reg_read(stk, STK8BAXX_REG_POWMODE, 0, &val))
-			return -EINVAL;
+			goto exit_err;
 
 		val &= STK8BAXX_PWMD_SLP_MASK;
 
 		if (stk8baxx_reg_write(stk, STK8BAXX_REG_POWMODE, (val | STK8BAXX_PWMD_SUSPEND)))
-			return -EINVAL;
+			goto exit_err;
 	}
 
 	return 0;
+exit_err:
+	atomic_set(&stk->in_suspend, 0);
+
+	acc_driver_pause_polling(0);
+
+	return -EINVAL;
 }
 
 /**

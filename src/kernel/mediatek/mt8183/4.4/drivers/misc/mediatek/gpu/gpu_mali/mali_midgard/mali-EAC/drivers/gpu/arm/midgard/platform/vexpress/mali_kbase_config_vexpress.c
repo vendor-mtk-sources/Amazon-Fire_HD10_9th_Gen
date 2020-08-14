@@ -107,7 +107,7 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 	mt_gpufreq_voltage_enable_set(1);
     
 	if (0x321 == code) {
-		// do something for Denali-1(6735)
+		// do something for abc123-1(6735)
 #ifdef CONFIG_MTK_CLKMGR
 		enable_clock( MT_CG_DISP0_SMI_COMMON, "GPU");
 		enable_clock( MT_CG_MFG_BG3D, "GPU");
@@ -137,13 +137,13 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 		}
 #endif
 	} else if (0x335 == code) {
-		// do something for Denali-2(6735M)
+		// do something for abc123-2(6735M)
 #ifdef CONFIG_MTK_CLKMGR
 		enable_clock( MT_CG_DISP0_SMI_COMMON, "GPU");
 		enable_clock( MT_CG_MFG_BG3D, "GPU");
 #endif /* CONFIG_MTK_CLKMGR */
 	} else if (0x337 == code) {
-		// do something for Denali-3(6753)
+		// do something for abc123-3(6753)
 #ifdef CONFIG_MTK_CLKMGR
 		enable_clock( MT_CG_DISP0_SMI_COMMON, "GPU");
 		enable_clock( MT_CG_MFG_BG3D, "GPU");
@@ -265,7 +265,7 @@ static void pm_callback_power_off(struct kbase_device *kbdev)
 
     /* MTK clock modified */
 	if (0x321 == code) {
-		// do something for Denali-1(6735)
+		// do something for abc123-1(6735)
 #ifdef CONFIG_MTK_CLKMGR
 		disable_clock( MT_CG_MFG_BG3D, "GPU");
 		disable_clock( MT_CG_DISP0_SMI_COMMON, "GPU");
@@ -276,13 +276,13 @@ static void pm_callback_power_off(struct kbase_device *kbdev)
 		clk_disable_unprepare(kbdev->clk_display_scp);
 #endif
 	} else if (0x335 == code) {
-		// do something for Denali-2(6735M)
+		// do something for abc123-2(6735M)
 #ifdef CONFIG_MTK_CLKMGR
 		disable_clock( MT_CG_MFG_BG3D, "GPU");
 		disable_clock( MT_CG_DISP0_SMI_COMMON, "GPU");
 #endif /* CONFIG_MTK_CLKMGR */
 	} else if (0x337 == code) {
-		// do something for Denali-3(6753)
+		// do something for abc123-3(6753)
 #ifdef CONFIG_MTK_CLKMGR
 		disable_clock( MT_CG_MFG_BG3D, "GPU");
 		disable_clock( MT_CG_DISP0_SMI_COMMON, "GPU");

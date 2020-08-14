@@ -183,6 +183,54 @@ struct IMGSENSOR_HW_POWER_SEQ sensor_power_sequence[] = {
 	  },
 	 },
 #endif
+#if defined(GC02M1_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_GC02M1_MIPI_RAW,
+	 {
+	  {RST, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {AVDD, Vol_2800, 5, Vol_Low},
+	  {RST, Vol_High, 2, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low}
+	  },
+	 },
+#endif
+#if defined(GC02M1FRONT_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_GC02M1FRONT_MIPI_RAW,
+	 {
+	  {RST, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {AVDD, Vol_2800, 5, Vol_Low},
+	  {RST, Vol_High, 2, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low}
+	  },
+	 },
+#endif
+#if defined(GC02M1SEC_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_GC02M1SEC_MIPI_RAW,
+	 {
+	  {PDN, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {AVDD, Vol_2800, 5, Vol_Low},
+	  {PDN, Vol_High, 2, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low}
+	  },
+	 },
+#endif
+#if defined(GC02M1FRONTSEC_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_GC02M1FRONTSEC_MIPI_RAW,
+	 {
+	  {PDN, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {AVDD, Vol_2800, 5, Vol_Low},
+	  {PDN, Vol_High, 2, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low}
+	  },
+	 },
+#endif
 #if defined(IMX350_MIPI_RAW)
 	{
 	 SENSOR_DRVNAME_IMX350_MIPI_RAW,

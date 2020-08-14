@@ -173,8 +173,27 @@ int ged_ge_alloc(int region_num, uint32_t *region_sizes)
 {
 	unsigned long flags;
 	int i;
-	GEEntry *entry = (GEEntry *)kmem_cache_zalloc(gPoolCache, GFP_KERNEL);
+	GEEntry *entry = NULL;
 
+	if (region_num < 0 || region_num >= GE_REGION_NUM_MAX) {
+		GE_PERR("region num check fail, region_num:%d\n", region_num);
+		goto err_entry;
+	}
+
+	if (!region_sizes) {
+		GE_PERR("region_sizes point check fail, NULL\n");
+		goto err_entry;
+	}
+
+	for (i = 0; i < region_num; ++i) {
+		if (region_sizes[i] > GE_REGION_SIZE_MAX) {
+			GE_PERR("region size check fail,region_sizes[%d]:%d\n",
+				i, region_sizes[i]);
+			goto err_entry;
+		}
+	}
+
+	entry = (GEEntry *)kmem_cache_zalloc(gPoolCache, GFP_KERNEL);
 	if (!entry) {
 		GE_PERR("alloc entry fail, size:%zu\n", sizeof(GEEntry));
 		goto err_entry;

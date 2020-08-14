@@ -238,7 +238,7 @@ static unsigned int _mtk_gpu_dvfs_index_to_frequency(int iFreq)
 {
     unsigned int iCurrentFreqCount;
     iCurrentFreqCount =mt_gpufreq_get_dvfs_table_num();
-    if(iCurrentFreqCount == 2) // Denali-1
+    if(iCurrentFreqCount == 2) // abc123-1
     {
         switch(iFreq)
         {

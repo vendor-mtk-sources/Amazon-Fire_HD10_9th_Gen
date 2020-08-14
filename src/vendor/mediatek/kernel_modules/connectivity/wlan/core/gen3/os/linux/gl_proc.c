@@ -91,6 +91,7 @@ struct BLOCKED_READING_PROC_T {
 	INT_64 i8WrPos;
 	UINT_32 u2BufLen; /* Max pucBuf length is 65535 */
 	BOOLEAN fgEnabled;
+	bool fgRemoving;
 };
 
 /*******************************************************************************
@@ -212,6 +213,7 @@ static void glProcWakeupThreads(struct BLOCKED_READING_PROC_T *prProc, UINT_32 u
 static BOOLEAN procInitBlockedReadProc(struct BLOCKED_READING_PROC_T *prProc, UINT_16 u2BufLen, BOOLEAN fgEnabled)
 {
 	prProc->fgEnabled = fgEnabled;
+	prProc->fgRemoving = FALSE;
 	prProc->i8WrPos = 0;
 	mutex_init(&prProc->lock);
 	if (u2BufLen) {
@@ -227,39 +229,53 @@ static BOOLEAN procInitBlockedReadProc(struct BLOCKED_READING_PROC_T *prProc, UI
 
 static VOID procUninitBlockedReadProc(struct BLOCKED_READING_PROC_T *prProc)
 {
+	prProc->fgRemoving = TRUE;
 	glProcWakeupThreads(prProc, 1);
 	kalMemFree(prProc->pucBuf, VIR_MEM_TYPE, prProc->u2BufLen);
 }
 
-static ssize_t wait_data_ready(struct BLOCKED_READING_PROC_T *proc, char __user *buf, loff_t *f_pos, PCHAR errMsg)
+static ssize_t wait_data_ready(struct BLOCKED_READING_PROC_T *proc, char __user *buf, loff_t *f_pos)
 {
 	INT_32 ret = -1;
 
 	while (ret) {
-		ret = wait_event_interruptible(proc->waitq, (proc->i8WrPos != *f_pos || !proc->fgEnabled ||
-					       test_bit(GLUE_FLAG_HALT_BIT, &g_prGlueInfo_proc->ulFlag)));
+		ret = wait_event_interruptible(proc->waitq, (proc->i8WrPos != *f_pos ||
+						   !proc->fgEnabled || proc->fgRemoving));
 		if (ret == -ERESTARTSYS)
 			return -EINTR;
 	}
-	if (!g_prGlueInfo_proc || test_bit(GLUE_FLAG_HALT_BIT, &g_prGlueInfo_proc->ulFlag))
+	if (proc->fgRemoving || !proc->fgEnabled || !g_prGlueInfo_proc ||
+		test_bit(GLUE_FLAG_HALT_BIT, &g_prGlueInfo_proc->ulFlag))
 		return 0;
-	if (!proc->fgEnabled) {
-		UINT_32 u4Len = 0;
 
-		if (!errMsg)
-			errMsg = "Not Enabled\n";
+	if (proc->i8WrPos < *f_pos)
+		return -ESTRPIPE;
 
-		u4Len = kalStrLen(errMsg);
-		if (*f_pos == u4Len)
-			return 0;
-		if (copy_to_user(buf, errMsg, u4Len)) {
-			DBGLOG(INIT, WARN, "copy_to_user error\n");
-			return -EFAULT;
-		}
-		*f_pos = u4Len;
-		return (ssize_t)u4Len;
-	}
 	return 0xefffffff;
+}
+
+static ssize_t procHelpMessageToUser(char __user *buf, loff_t *f_pos, size_t count, char *errMsg)
+{
+	UINT32 u4Len = 0;
+
+	if (!errMsg)
+		return 0;
+
+	u4Len = kalStrLen(errMsg);
+
+	if (*f_pos >= u4Len)
+		return 0;
+
+	u4Len -= *f_pos;
+	if (u4Len > count)
+		u4Len = count;
+
+	if (copy_to_user(buf, errMsg + *f_pos, u4Len)) {
+		DBGLOG(INIT, WARN, "copy_to_user error\n");
+		return -EFAULT;
+	}
+	*f_pos += u4Len;
+	return (ssize_t)u4Len;
 }
 
 static ssize_t read_virtual_buf(struct BLOCKED_READING_PROC_T *prProc, PPUINT_8 ppucRdPos, loff_t *f_pos)
@@ -275,7 +291,7 @@ static ssize_t read_virtual_buf(struct BLOCKED_READING_PROC_T *prProc, PPUINT_8 
 			i2CopySize = (INT_16)calModulus64(i8WrPos, (UINT_32)u2BufSize);
 			*ppucRdPos = pucBuf + i2CopySize;
 			i2CopySize = u2BufSize - i2CopySize;
-			DBGLOG(INIT, INFO, "Lost %lld bytes, WR:%lld, RD:%lld, MaxRd:%u bytes\n",
+			DBGLOG(INIT, TRACE, "Lost %lld bytes, WR:%lld, RD:%lld, MaxRd:%u bytes\n",
 			       (i8WrPos - *f_pos - u2BufSize), i8WrPos, *f_pos, i2CopySize);
 			*f_pos = i8WrPos - u2BufSize;
 		} else {
@@ -285,7 +301,7 @@ static ssize_t read_virtual_buf(struct BLOCKED_READING_PROC_T *prProc, PPUINT_8 
 				i2CopySize = u2BufSize - i2CopySize;
 			else
 				i2CopySize = i8WrPos - *f_pos;
-			DBGLOG(INIT, INFO, "Continue to read, WR:%lld, RD:%lld, MaxRd:%u bytes\n",
+			DBGLOG(INIT, TRACE, "Continue to read, WR:%lld, RD:%lld, MaxRd:%u bytes\n",
 			       i8WrPos, *f_pos, i2CopySize);
 		}
 	} else {/* The first time t read for current reader */
@@ -298,7 +314,7 @@ static ssize_t read_virtual_buf(struct BLOCKED_READING_PROC_T *prProc, PPUINT_8 
 			*ppucRdPos = pucBuf;
 			i2CopySize = (INT_16)i8WrPos;
 		}
-		DBGLOG(INIT, INFO, "First time to read, WR:%lld, RD:%lld, MaxRd:%u bytes\n",
+		DBGLOG(INIT, TRACE, "First time to read, WR:%lld, RD:%lld, MaxRd:%u bytes\n",
 		       i8WrPos, *f_pos, i2CopySize);
 	}
 	mutex_unlock(&prProc->lock);
@@ -306,14 +322,22 @@ static ssize_t read_virtual_buf(struct BLOCKED_READING_PROC_T *prProc, PPUINT_8 
 }
 
 static ssize_t procReadBlockedProc(struct BLOCKED_READING_PROC_T *prBlockProc, char __user *buf,
-					      size_t count, loff_t *f_pos, char *errMsg)
+	bool fgBlockRead, size_t count, loff_t *f_pos, char *errMsg)
 {
 	PUINT_8 pucRdPos = NULL;
 	ssize_t i4CopySize = 0;
 
-	i4CopySize = wait_data_ready(prBlockProc, buf, f_pos, errMsg);
-	if (i4CopySize != 0xefffffff)
-		return (ssize_t)(i4CopySize & 0xffffffff);
+	if (!prBlockProc->fgEnabled)
+		return procHelpMessageToUser(buf, f_pos, count, errMsg);
+
+	if (fgBlockRead) {
+		i4CopySize = wait_data_ready(prBlockProc, buf, f_pos);
+		if (i4CopySize != 0xefffffff)
+			return (ssize_t)(i4CopySize & 0xffffffff);
+	} else if (*f_pos == prBlockProc->i8WrPos) {
+		DBGLOG(INIT, INFO, "No data available\n");
+		return -EAGAIN;
+	}
 
 	i4CopySize = read_virtual_buf(prBlockProc, &pucRdPos, f_pos);
 	DBGLOG(INIT, TRACE, "Read %d bytes, user buf size %u\n", i4CopySize, count);
@@ -361,8 +385,9 @@ static VOID glFormatOutput(BOOLEAN fgTimeStamp, PINT_64 pi8VirtualWrPos, const P
 		DBGLOG(INIT, ERROR, "error to sprintf %s\n", pucFwt);
 		return;
 	}
-	DBGLOG(INIT, TRACE, "%s", aucBuf);
+
 	i2BufUsed += i2TimeUsed;
+	DBGLOG(INIT, TRACE, "WrPos %lld, BufUsed %d, Remain %d, %s", *pi8VirtualWrPos, i2BufUsed, *pu2RemainLen, aucBuf);
 
 	if (i2BufUsed > *pu2RemainLen) {
 		kalMemCopy(*ppucWrPos, pucTemp, *pu2RemainLen);
@@ -380,25 +405,27 @@ static VOID glFormatOutput(BOOLEAN fgTimeStamp, PINT_64 pi8VirtualWrPos, const P
 #if CFG_SUPPORT_WIFI_POWER_DEBUG
 VOID glNotifyWakeups(PVOID pvWakeup, enum ENUM_WAKE_UP_T eType)
 {
-	UINT_16 u2WrLen = (UINT_16)calModulus64(rWakeupLogProc.i8WrPos, rWakeupLogProc.u2BufLen);
-	UINT_16 u2RemainLen = rWakeupLogProc.u2BufLen - u2WrLen;
-	PUINT_8 pucRealWrPos = &rWakeupLogProc.pucBuf[u2WrLen];
+	struct BLOCKED_READING_PROC_T *prBRProc = &rWakeupLogProc;
+	UINT_16 u2WrLen = (UINT_16)calModulus64(prBRProc->i8WrPos, prBRProc->u2BufLen);
+	UINT_16 u2RemainLen = prBRProc->u2BufLen - u2WrLen;
+	PUINT_8 pucRealWrPos = &prBRProc->pucBuf[u2WrLen];
 	PUINT_8 pucIp;
 	UINT_8 ucIpVersion;
 	UINT_8 ucIpProto;
-	UINT_8 aucAppName[32];
+	UINT_8 aucAppName[32] = {0};
 	UINT_16 u2EthType;
 	struct sk_buff *prSkb;
 #define WRITE_WAKEUP(_fmt, ...)\
-		glFormatOutput(TRUE, &rWakeupLogProc.i8WrPos, &rWakeupLogProc.pucBuf[0], \
-				rWakeupLogProc.u2BufLen, &pucRealWrPos, &u2RemainLen, _fmt, ##__VA_ARGS__)
+		glFormatOutput(TRUE, &prBRProc->i8WrPos, &prBRProc->pucBuf[0], \
+				prBRProc->u2BufLen, &pucRealWrPos,&u2RemainLen, _fmt, ##__VA_ARGS__)
 
 #define GET_APP_NAME() \
-		kalGetAppNameByEth(g_prGlueInfo_proc, prSkb, aucAppName, sizeof(aucAppName))
+		kalGetAppNameByEth(g_prGlueInfo_proc, prSkb, aucAppName, sizeof(aucAppName) - 1)
 
-	if (!rWakeupLogProc.fgEnabled || !pvWakeup || eType >= WAKE_TYPE_NUM)
+	if (!prBRProc->fgEnabled || !pvWakeup || eType >= WAKE_TYPE_NUM)
 		return;
-	mutex_lock(&rWakeupLogProc.lock);
+
+	mutex_lock(&prBRProc->lock);
 	switch (eType) {
 	case WAKE_TYPE_IP:
 	{
@@ -418,7 +445,7 @@ VOID glNotifyWakeups(PVOID pvWakeup, enum ENUM_WAKE_UP_T eType)
 						     (pucIp[20] << 8) | pucIp[21], (pucIp[22] << 8) | pucIp[23]);
 			} else if (ucIpProto == IP_PROTOCOL_UDP) {
 				if (GET_APP_NAME())
-					WRITE_WAKEUP("%s", aucAppName);
+					WRITE_WAKEUP("%s\n", aucAppName);
 				else
 					WRITE_WAKEUP("UDP4=%pI4, sport=%d,dport=%d\n", &pucIp[12],
 						     (pucIp[20] << 8) | pucIp[21], (pucIp[22] << 8) | pucIp[23]);
@@ -437,7 +464,7 @@ VOID glNotifyWakeups(PVOID pvWakeup, enum ENUM_WAKE_UP_T eType)
 						(pucIp[40] << 8) | pucIp[41], (pucIp[42] << 8) | pucIp[43]);
 			} else if (ucIpProto == IP_PROTOCOL_UDP) {
 				if (GET_APP_NAME())
-					WRITE_WAKEUP("%s", aucAppName);
+					WRITE_WAKEUP("%s\n", aucAppName);
 				else
 					WRITE_WAKEUP("UDP6=%pI6c,sport=%d,dport=%d\n", &pucIp[8],
 						(pucIp[40] << 8) | pucIp[41], (pucIp[42] << 8) | pucIp[43]);
@@ -462,28 +489,28 @@ VOID glNotifyWakeups(PVOID pvWakeup, enum ENUM_WAKE_UP_T eType)
 		break;
 	}
 	case WAKE_TYPE_1X:
-		WRITE_WAKEUP("1X:eth_type=%d\n", *(PUINT_16)pvWakeup);
+		WRITE_WAKEUP("1X:eth_type=0x%04x\n", *(PUINT_16)pvWakeup);
 		break;
 	case WAKE_TYPE_OTHER_DATA:
-		WRITE_WAKEUP("OTHER_DATA:eth_type=%d\n", *(PUINT_16)pvWakeup);
+		WRITE_WAKEUP("OTHER_DATA:eth_type=0x%04x\n", *(PUINT_16)pvWakeup);
 		break;
 	case WAKE_TYPE_MGMT:
-		WRITE_WAKEUP("MGMT:sub_type=%d\n", *(PUINT_16)pvWakeup);
+		WRITE_WAKEUP("MGMT:sub_type=0x%02x\n", *(PUINT_8)pvWakeup);
 		break;
 	case WAKE_TYPE_EVENT:
-		WRITE_WAKEUP("EVENT:id=%d\n", *(PUINT_8)pvWakeup);
+		WRITE_WAKEUP("EVENT:id=0x%02x\n", *(PUINT_8)pvWakeup);
 		break;
 	case WAKE_TYPE_UNKNOWN:
 		WRITE_WAKEUP("UNKNOWN:packet_type=%d\n", *(PUINT_8)pvWakeup);
 		break;
-	case WAKE_TYPE_FINISH_CHARGE:
-		WRITE_WAKEUP("Charging finished\n");
+	case WAKE_TYPE_CHARGE_STATUS:
+		WRITE_WAKEUP("%s\n", (PUINT_8)pvWakeup);
 		break;
 	case WAKE_TYPE_NO_PKT_DATA:
 		WRITE_WAKEUP("%s is NULL\n", (PUINT_8)pvWakeup);
 		break;
 	case WAKE_TYPE_INVALID_SW_DEFINED:
-		WRITE_WAKEUP("Invalid SW defined Packet %d\n", *(PUINT_16)pvWakeup);
+		WRITE_WAKEUP("Invalid SW defined Packet 0x%04x\n", *(PUINT_16)pvWakeup);
 		break;
 	case WAKE_TYPE_BAR:
 	{
@@ -495,8 +522,8 @@ VOID glNotifyWakeups(PVOID pvWakeup, enum ENUM_WAKE_UP_T eType)
 	default:
 		break;
 	}
-	mutex_unlock(&rWakeupLogProc.lock);
-	glProcWakeupThreads(&rWakeupLogProc, 1);
+	mutex_unlock(&prBRProc->lock);
+	glProcWakeupThreads(prBRProc, 1);
 }
 
 /* sample: IP:xxx.xxx.xxx.xxx;sport:xxxxx;dport:xxxxx */
@@ -506,7 +533,8 @@ static ssize_t wakeup_log_read(struct file *file, char __user *buf, size_t count
 #define TO_ENABLE "echo enable > /proc/net/wlan/"PROC_WAKEUP_LOG" to enable"
 #define TO_DISABLE "echo disable > /proc/net/wlan/"PROC_WAKEUP_LOG" to disable\n"
 
-	return procReadBlockedProc(&rWakeupLogProc, buf, count, f_pos, NOT_ENABLE"\n"TO_ENABLE"\n"TO_DISABLE);
+	return procReadBlockedProc(&rWakeupLogProc, buf, !(file->f_flags & O_NONBLOCK), count, f_pos,
+				   NOT_ENABLE"\n"TO_ENABLE"\n"TO_DISABLE);
 }
 
 static ssize_t wakeup_log_configure(struct file *file, const char __user *buffer,
@@ -525,9 +553,11 @@ static const struct file_operations wakeup_log_ops = {
 
 VOID glNotifyAppTxRx(P_GLUE_INFO_T prGlueInfo, PCHAR pcReason)
 {
-	UINT_16 u2RemainLen = 0;
-	PUINT_8 pucRealWrPos;
-	UINT_16 u2EstimatedBufLen = 0;
+	struct BLOCKED_READING_PROC_T *prBRProc = &rAppTxRxProc;
+	UINT_16 u2WrLen = (UINT_16)calModulus64(prBRProc->i8WrPos, prBRProc->u2BufLen);
+	UINT_16 u2RemainLen = prBRProc->u2BufLen - u2WrLen;
+	PUINT_8 pucRealWrPos = &prBRProc->pucBuf[u2WrLen];
+
 	P_LINK_T prAppStatLink;
 	P_LINK_T prOtherDataLink;
 	struct APP_TX_RX_STAT_T *prAppStat = NULL;
@@ -535,39 +565,21 @@ VOID glNotifyAppTxRx(P_GLUE_INFO_T prGlueInfo, PCHAR pcReason)
 	struct DRV_PKT_STAT_T *prDrvPktStat = NULL;
 	KAL_SPIN_LOCK_DECLARATION();
 #define WRITE_APP_TX_RX(_fmt, ...)\
-	glFormatOutput(FALSE, &rAppTxRxProc.i8WrPos, &rAppTxRxProc.pucBuf[0], \
-			rAppTxRxProc.u2BufLen, &pucRealWrPos, &u2RemainLen, _fmt, ##__VA_ARGS__)
+	glFormatOutput(FALSE, &prBRProc->i8WrPos, &prBRProc->pucBuf[0], \
+			prBRProc->u2BufLen, &pucRealWrPos, &u2RemainLen, _fmt, ##__VA_ARGS__)
 
-	if (!prGlueInfo || !rAppTxRxProc.fgEnabled)
+	if (!prGlueInfo || !prBRProc->fgEnabled)
 		return;
 	prAppStatLink = &prGlueInfo->rAppTxRxStat.rUsingLink;
 	prOtherDataLink = &prGlueInfo->rOtherDataStat.rUsingLink;
 	prDrvPktStat = &prGlueInfo->arDrvPktStat[0];
-	mutex_lock(&rAppTxRxProc.lock);
-	/* one APP stat needs 93 bytes, one non-tcp/udp pkt stat needs 44 bytes, cmd/event stat needs 98 bytes
-	** 1 MGMT stat needs 55 bytes, header needs 70 bytes.
-	*/
-	u2EstimatedBufLen = prAppStatLink->u4NumElem * 93 + prOtherDataLink->u4NumElem * 44 + 2 * 98 + 85 + 70;
-	if (u2EstimatedBufLen > rAppTxRxProc.u2BufLen) {
-		kalMemFree(rAppTxRxProc.pucBuf, VIR_MEM_TYPE, rAppTxRxProc.u2BufLen);
-		DBGLOG(INIT, INFO, "reallocate buffer, last len %d, new len %d\n",
-			rAppTxRxProc.u2BufLen, u2EstimatedBufLen);
-		rAppTxRxProc.pucBuf = kalMemAlloc(u2EstimatedBufLen, VIR_MEM_TYPE);
-		if (!rAppTxRxProc.pucBuf) {
-			rAppTxRxProc.u2BufLen = 0;
-			DBGLOG(INIT, ERROR, "failed to allocate %d bytes for stat buf\n", u2EstimatedBufLen);
-			mutex_unlock(&rAppTxRxProc.lock);
-			return;
-		}
-		rAppTxRxProc.u2BufLen = u2EstimatedBufLen;
-	}
-	u2RemainLen = rAppTxRxProc.u2BufLen;
-	pucRealWrPos = &rAppTxRxProc.pucBuf[0];
-	kalMemZero(rAppTxRxProc.pucBuf, rAppTxRxProc.u2BufLen);
+	mutex_lock(&prBRProc->lock);
+
 	if (!pcReason)
 		WRITE_APP_TX_RX("%s APP T/Rx Statistics before suspend at %s\n", acResumeTime, acSuspendTime);
 	else
-		WRITE_APP_TX_RX("APP T/Rx Statistics due to %s\n", pcReason);
+		glFormatOutput(TRUE, &prBRProc->i8WrPos, &prBRProc->pucBuf[0], prBRProc->u2BufLen,
+			       &pucRealWrPos, &u2RemainLen, "APP T/Rx Statistics due to %s\n", pcReason);
 
 	KAL_ACQUIRE_SPIN_LOCK(prGlueInfo->prAdapter, SPIN_LOCK_APP_TRX_STAT);
 	LINK_FOR_EACH_ENTRY(prAppStat, prAppStatLink, rLinkEntry, struct APP_TX_RX_STAT_T) {
@@ -618,8 +630,8 @@ VOID glNotifyAppTxRx(P_GLUE_INFO_T prGlueInfo, PCHAR pcReason)
 
 	kalMemZero(prGlueInfo->arDrvPktStat, sizeof(prGlueInfo->arDrvPktStat));
 	KAL_RELEASE_SPIN_LOCK(prGlueInfo->prAdapter, SPIN_LOCK_DRV_PKT_STAT);
-	mutex_unlock(&rAppTxRxProc.lock);
-	glProcWakeupThreads(&rAppTxRxProc, 1);
+	mutex_unlock(&prBRProc->lock);
+	glProcWakeupThreads(prBRProc, 1);
 }
 
 VOID glLogSuspendResumeTime(BOOLEAN fgSuspend)
@@ -653,33 +665,9 @@ static ssize_t procAppTRxRead(struct file *file, char __user *buf, size_t count,
 #define TO_ENABLE "echo enable > /proc/net/wlan/"PROC_TX_RX_STAT" to enable"
 #undef TO_DISABLE
 #define TO_DISABLE "echo disable > /proc/net/wlan/"PROC_TX_RX_STAT" to disable"
-#define TO_OUTPUT "echo output > /proc/net/wlan/"PROC_TX_RX_STAT" to force output"
-	PUINT_8 pucRdPos = NULL;
-	ssize_t i4CopySize = 0;
-
-	i4CopySize = wait_data_ready(&rAppTxRxProc, buf, f_pos, NOT_ENABLE"\n"TO_ENABLE"\n"TO_DISABLE"\n"TO_OUTPUT);
-	if (i4CopySize != 0xefffffff) {
-		DBGLOG(INIT, ERROR, "exit, return %d\n", i4CopySize);
-		return i4CopySize;
-	}
-
-	pucRdPos = rAppTxRxProc.pucBuf;
-	i4CopySize = kalStrLen(pucRdPos);
-	if (i4CopySize > rAppTxRxProc.u2BufLen)
-		i4CopySize = rAppTxRxProc.u2BufLen - 1;
-
-	if (!*f_pos)
-		*f_pos = rAppTxRxProc.i8WrPos - i4CopySize;
-
-	DBGLOG(INIT, TRACE, "Read %d bytes, user buf size %u\n", i4CopySize, count);
-	if (i4CopySize > count)
-		i4CopySize = (ssize_t)count;
-	if (!pucRdPos || copy_to_user(buf, pucRdPos, i4CopySize)) {
-		DBGLOG(INIT, WARN, "copy_to_user error\n");
-		return 0;
-	}
-	*f_pos += i4CopySize;
-	return i4CopySize;
+#define TO_OUTPUT "echo output > /proc/net/wlan/"PROC_TX_RX_STAT" to force output\n"
+	return procReadBlockedProc(&rAppTxRxProc, buf, !(file->f_flags & O_NONBLOCK), count, f_pos,
+				   NOT_ENABLE"\n"TO_ENABLE"\n"TO_DISABLE"\n"TO_OUTPUT);
 }
 
 BOOLEAN glIsDataStatEnabled(VOID)
@@ -695,8 +683,31 @@ BOOLEAN glIsWakeupLogEnabled(VOID)
 static ssize_t procAppTRxConf(struct file *file, const char __user *buffer,
 				size_t count, loff_t *data)
 {
+	struct BLOCKED_READING_PROC_T *prBRProc = &rAppTxRxProc;
+
 	PROC_WRITE_COMMON(buffer, count);
-	CONFIGURE_BLOCKED_READING_PROC_ON_OFF(&rAppTxRxProc);
+	if (!prBRProc->fgEnabled) {
+		if (!kalStrnCmp(aucProcBuf, "enable", 6)) {
+			prBRProc->u2BufLen = 8192;
+			prBRProc->pucBuf = kalMemAlloc(prBRProc->u2BufLen, VIR_MEM_TYPE);
+			if (!prBRProc->pucBuf) {
+				return -ENOMEM;
+			}
+			prBRProc->fgEnabled = TRUE;
+			prBRProc->i8WrPos = 0;
+			return 6;
+		}
+		return -EOPNOTSUPP;
+	}
+
+	if (!kalStrnCmp(aucProcBuf, "disable", 7)) {
+		prBRProc->fgEnabled = FALSE;
+		glProcWakeupThreads(prBRProc, 1);
+		kalMemFree(prBRProc->pucBuf, VIR_MEM_TYPE, prBRProc->u2BufLen);
+		prBRProc->pucBuf = NULL;
+		prBRProc->u2BufLen = 0;
+		return 7;
+	}
 
 	if (!kalStrnCmp(aucProcBuf, "output", 6)) {
 		UINT_32 u4InfoLen = 0;
@@ -705,7 +716,7 @@ static ssize_t procAppTRxConf(struct file *file, const char __user *buffer,
 			 FALSE, FALSE, FALSE, &u4InfoLen);
 		return 6;
 	}
-	DBGLOG(INIT, WARN, "error sscanf\n");
+	DBGLOG(INIT, WARN, "error sscanf or not supported command\n");
 	return -EINVAL;
 }
 
@@ -1553,17 +1564,19 @@ static const struct file_operations auto_perf_ops = {
 /* Provide a real-time monitor mechanism to end-user to monitor wlan status */
 VOID glNotifyDrvStatus(enum DRV_STATUS_T eDrvStatus, PVOID pvInfo)
 {
-	UINT_16 u2WrLen = (UINT_16)calModulus64(rDrvStatusProc.i8WrPos, rDrvStatusProc.u2BufLen);
-	UINT_16 u2RemainLen = rDrvStatusProc.u2BufLen - u2WrLen;
-	PUINT_8 pucRealWrPos = &rDrvStatusProc.pucBuf[u2WrLen];
+	struct BLOCKED_READING_PROC_T *prBRProc = &rDrvStatusProc;
+	UINT_16 u2WrLen = (UINT_16)calModulus64(prBRProc->i8WrPos, prBRProc->u2BufLen);
+	UINT_16 u2RemainLen = prBRProc->u2BufLen - u2WrLen;
+	PUINT_8 pucRealWrPos = &prBRProc->pucBuf[u2WrLen];
 #define WRITE_STATUS(_fmt, ...)\
-	glFormatOutput(TRUE, &rDrvStatusProc.i8WrPos, &rDrvStatusProc.pucBuf[0], \
-			rDrvStatusProc.u2BufLen, &pucRealWrPos, &u2RemainLen, _fmt, ##__VA_ARGS__)
+	glFormatOutput(TRUE, &prBRProc->i8WrPos, &prBRProc->pucBuf[0], \
+			prBRProc->u2BufLen, &pucRealWrPos, &u2RemainLen, _fmt, ##__VA_ARGS__)
 
-	if (!rDrvStatusProc.fgEnabled)
+	if (!prBRProc->fgEnabled)
 		return;
 
-	mutex_lock(&rDrvStatusProc.lock);
+	mutex_lock(&prBRProc->lock);
+
 	switch (eDrvStatus) {
 	case UNSOL_BTM_REQ:
 	case SOL_BTM_REQ:
@@ -1675,9 +1688,9 @@ VOID glNotifyDrvStatus(enum DRV_STATUS_T eDrvStatus, PVOID pvInfo)
 	default:
 		break;
 	}
-	mutex_unlock(&rDrvStatusProc.lock);
+	mutex_unlock(&prBRProc->lock);
 	/* Wake up all readers if at least one is waiting */
-	glProcWakeupThreads(&rDrvStatusProc, 1);
+	glProcWakeupThreads(prBRProc, 1);
 }
 
 /* Read callback function
@@ -1693,7 +1706,8 @@ static ssize_t procReadDrvStatus(struct file *filp, char __user *buf, size_t cou
 #undef TO_DISABLE
 #define TO_DISABLE "echo disable > /proc/net/wlan/"PROC_DRV_STATUS" to disable\n"
 
-	return procReadBlockedProc(&rDrvStatusProc, buf, count, f_pos, NOT_ENABLE"\n"TO_ENABLE"\n"TO_DISABLE);
+	return procReadBlockedProc(&rDrvStatusProc, buf, !(filp->f_flags & O_NONBLOCK),
+			count, f_pos, NOT_ENABLE"\n"TO_ENABLE"\n"TO_DISABLE);
 }
 
 static ssize_t procDrvStatusCfg(struct file *file, const char *buffer, size_t count, loff_t *data)

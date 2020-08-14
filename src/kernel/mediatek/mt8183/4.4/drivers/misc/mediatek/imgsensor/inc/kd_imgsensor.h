@@ -282,6 +282,10 @@
 #define GC0310_SENSOR_ID                        0xa310
 #define GC0313MIPI_YUV_SENSOR_ID                0xD0
 #define GC0312_SENSOR_ID                        0xb310
+#define GC02M1_SENSOR_ID                        0x02E0
+#define GC02M1FRONT_SENSOR_ID                   0x02E1
+#define GC02M1SEC_SENSOR_ID                     0x02E2
+#define GC02M1FRONTSEC_SENSOR_ID                0x02E3
 /*SP*/
 #define SP0A19_YUV_SENSOR_ID                    0xA6
 #define SP2518_YUV_SENSOR_ID                    0x53
@@ -472,6 +476,10 @@
 #define SENSOR_DRVNAME_GC0310_YUV               "gc0310_yuv"
 #define SENSOR_DRVNAME_GC0312_YUV               "gc0312_yuv"
 #define SENSOR_DRVNAME_GC0313MIPI_YUV           "gc0313_mipi_yuv"
+#define SENSOR_DRVNAME_GC02M1_MIPI_RAW          "gc02m1_mipi_raw"
+#define SENSOR_DRVNAME_GC02M1FRONT_MIPI_RAW     "gc02m1front_mipi_raw"
+#define SENSOR_DRVNAME_GC02M1SEC_MIPI_RAW       "gc02m1sec_mipi_raw"
+#define SENSOR_DRVNAME_GC02M1FRONTSEC_MIPI_RAW  "gc02m1frontsec_mipi_raw"
 /*SP*/
 #define SENSOR_DRVNAME_SP0A19_YUV               "sp0a19_yuv"
 #define SENSOR_DRVNAME_SP2518_YUV               "sp2518_yuv"

@@ -361,6 +361,21 @@ static long cmdq_driver_create_secure_medadata(struct cmdqCommandStruct *pComman
 	void *isp_bufs[ARRAY_SIZE(pCommand->secData.ispMeta.ispBufs)] = {0};
 	u32 i;
 
+		/* bypass 0 metadata case */
+	if (pCommand->secData.addrMetadataCount == 0) {
+		pCommand->secData.addrMetadatas =
+			(cmdqU32Ptr_t) (unsigned long)NULL;
+		return 0;
+	}
+
+
+	/* mdp max secure matadata count is 9. */
+	if (pCommand->secData.addrMetadataCount >= 10) {
+		CMDQ_ERR("invalid metadata count:%d\n",
+				 pCommand->secData.addrMetadataCount);
+		return -EFAULT;
+	}
+
 	max_length = CMDQ_IWC_MAX_ADDR_LIST_LENGTH * sizeof(struct cmdqSecAddrMetadataStruct);
 	length = pCommand->secData.addrMetadataCount * sizeof(struct cmdqSecAddrMetadataStruct);
 
@@ -440,6 +455,11 @@ static long cmdq_driver_process_command_request(
 	int32_t status = 0;
 	uint32_t *userRegValue = NULL;
 	uint32_t userRegCount = 0;
+
+	if (pCommand->regRequest.count > CMDQ_MAX_DUMP_REG_COUNT) {
+		CMDQ_ERR("invalid regRequest.count:%d\n", pCommand->regRequest.count);
+		return -EINVAL;
+	}
 
 	if (pCommand->regRequest.count != pCommand->regValue.count) {
 		CMDQ_ERR("mismatch regRequest and regValue\n");
@@ -585,6 +605,20 @@ static void cmdq_release_task_property(void **prop_addr, u32 *prop_size)
 	*prop_size = 0;
 }
 
+static long cmdq_verify_command(struct cmdqCommandStruct *command)
+{
+	if (command->blockSize < (2 * CMDQ_INST_SIZE) ||
+		(command->blockSize > CMDQ_MAX_COMMAND_SIZE) ||
+		command->blockSize % 8 != 0) {
+		/* for userspace command: must ends with EOC+JMP. */
+		CMDQ_ERR("Command block size invalid! size:%d\n",
+			command->blockSize);
+		return -EFAULT;
+	}
+
+	return 0;
+}
+
 static long cmdq_ioctl(struct file *pFile, unsigned int code, unsigned long param)
 {
 	struct cmdqCommandStruct command;
@@ -608,6 +642,9 @@ static long cmdq_ioctl(struct file *pFile, unsigned int code, unsigned long para
 			CMDQ_ERR("copy from user failed.\n");
 			return -EFAULT;
 		}
+
+		if (cmdq_verify_command(&command) != 0)
+			return -EFAULT;
 
 		if (command.regRequest.count > CMDQ_MAX_DUMP_REG_COUNT ||
 			!command.blockSize ||
@@ -663,6 +700,9 @@ static long cmdq_ioctl(struct file *pFile, unsigned int code, unsigned long para
 			CMDQ_ERR("copy from user fail.\n");
 			return -EFAULT;
 		}
+
+		if (cmdq_verify_command(&(job.command)) != 0)
+			return -EFAULT;
 
 		if (job.command.blockSize > CMDQ_MAX_COMMAND_SIZE ||
 			job.command.prop_size > CMDQ_MAX_USER_PROP_SIZE) {
@@ -764,8 +804,10 @@ static long cmdq_ioctl(struct file *pFile, unsigned int code, unsigned long para
 			return -EFAULT;
 		}
 
-		if (pTask->regCount > CMDQ_MAX_DUMP_REG_COUNT)
+		if (pTask->regCount > CMDQ_MAX_DUMP_REG_COUNT) {
+			CMDQ_ERR("invalid regCount:%d\n", pTask->regCount);
 			return -EINVAL;
+		}
 
 		/* utility service, fill the engine flag. */
 		/* this is required by MDP. */
@@ -858,6 +900,14 @@ static long cmdq_ioctl(struct file *pFile, unsigned int code, unsigned long para
 			if (copy_from_user(&addrReq, (void *)param, sizeof(addrReq))) {
 				CMDQ_ERR("CMDQ_IOCTL_ALLOC_WRITE_ADDRESS copy_from_user failed\n");
 				return -EFAULT;
+			}
+
+			if (!addrReq.count
+				|| addrReq.count > CMDQ_MAX_WRITE_ADDR_COUNT) {
+				CMDQ_ERR(
+					"Invalid alloc write addr count:%u\n",
+					addrReq.count);
+				return -EINVAL;
 			}
 
 			status = cmdqCoreAllocWriteAddress(addrReq.count, &paStart, (void *)pFile);

@@ -43,8 +43,8 @@ extern unsigned int g_power_status;
 unsigned int g_current_gpu_platform_id = 0;
 
 mtk_gpu_freq_limit_data mt6735_gpu_freq_limit_data[MTK_MT6735_GPU_LIMIT_COUNT]=
-{ {2, 2, (const int[]){0,1}}, // Denali-1;   
-  {3, 3, (const int[]){0,1,2}}, // Denali-3(MT6753T);  
+{ {2, 2, (const int[]){0,1}}, // abc123-1;   
+  {3, 3, (const int[]){0,1,2}}, // abc123-3(MT6753T);  
 };
 
 extern unsigned int (*mtk_get_gpu_loading_fp)(void);
@@ -296,7 +296,7 @@ mali_error kbase_pm_powerup(struct kbase_device *kbdev)
 
 	// mtk
 	code = mt_get_chip_hw_code();
-	if (0x321 == code) // Denali-1(6735)
+	if (0x321 == code) // abc123-1(6735)
 	{     
      // read GPU efuse info.
      gpu_efuse = (get_devinfo_with_index(3) >> 7)&0x01;
@@ -307,11 +307,11 @@ mali_error kbase_pm_powerup(struct kbase_device *kbdev)
 	} 
 	/*else if (0x335 == code) 
 	{
-     // Denali-2(6735M)
+     // abc123-2(6735M)
 	} 
 	else if (0x337 == code)
 	{
-     // Denali-3(6753)
+     // abc123-3(6753)
 	}*/
 	else
 	{

@@ -2753,7 +2753,7 @@ static VOID nicRxCheckWakeupReason(P_SW_RFB_T prSwRfb)
 		case 0x8100: /* VLAN */
 		case 0x890d: /* TDLS */
 #if CFG_SUPPORT_WIFI_POWER_DEBUG
-			glNotifyWakeups(&u2Temp, WAKE_TYPE_OTHER_DATA);
+			glNotifyWakeups(&u2Temp, WAKE_TYPE_1X);
 #endif
 			DBGLOG(RX, INFO, "Data Packet, EthType 0x%04x wakeup host\n", u2Temp);
 			break;
@@ -2878,6 +2878,11 @@ VOID nicRxProcessRFBs(IN P_ADAPTER_T prAdapter)
 				if (!prSwRfb)
 					break;
 #if CFG_SUPPORT_WAKEUP_REASON_DEBUG
+				if (test_and_clear_bit(SUSPEND_FLAG_FOR_APP_TRX_STAT,
+				    &prAdapter->ulSuspendFlag) && kalWakeupFromSleep()) {
+					glLogSuspendResumeTime(FALSE);
+					glNotifyAppTxRx(prAdapter->prGlueInfo, NULL);
+				}
 				if (kalIsWakeupByWlan(prAdapter))
 					nicRxCheckWakeupReason(prSwRfb);
 #endif

@@ -167,10 +167,13 @@ static int bma2x2_i2c_suspend(struct device *dev)
 	atomic_set(&client_data->in_suspend, 1);
 
 	err = BMA2x2_SetPowerMode(client, false);
-	if (err < 0)
+	if (err < 0) {
 		GSE_ERR("BMA2x2_SetPowerMode failed\n");
-	else
+		atomic_set(&client_data->in_suspend, 0);
+		acc_driver_pause_polling(0);
+	} else {
 		GSE_ERR("BMA2x2_SetPowerMode succeed\n");
+	}
 
 	return err;
 }
@@ -937,11 +940,11 @@ static int BMA2x2_SetPowerMode(struct i2c_client *client, bool enable)
 		actual_power_mode = BMA2x2_MODE_SUSPEND;
 
 	res = bma_i2c_read_block(client, 0x3E, &temp, 0x1);
-	msleep(20);
+	usleep_range(900, 1000);
 	count++;
 	while ((count < 3) && (res < 0)) {
 		res = bma_i2c_read_block(client, 0x3E, &temp, 0x1);
-		msleep(20);
+		usleep_range(900, 1000);
 		count++;
 	}
 	if (res < 0)
@@ -953,12 +956,12 @@ static int BMA2x2_SetPowerMode(struct i2c_client *client, bool enable)
 		while (count < 10) {
 			res = bma_i2c_write_block(client,
 				BMA2x2_MODE_CTRL_REG, &databuf[0], 1);
-			msleep(20);
+			usleep_range(900, 1000);
 			if (res < 0)
 				GSE_ERR("write MODE_CTRL_REG failed!\n");
 			res = bma_i2c_write_block(client,
 				BMA2x2_LOW_POWER_CTRL_REG, &databuf[1], 1);
-			msleep(20);
+			usleep_range(1900, 2000);
 			if (res < 0)
 				GSE_ERR("write LOW_POWER_CTRL_REG failed!\n");
 
@@ -985,7 +988,7 @@ static int BMA2x2_SetPowerMode(struct i2c_client *client, bool enable)
 				break;
 			}
 		}
-		msleep(20);
+		usleep_range(900, 1000);
 		break;
 	case BMA2x2_MODE_SUSPEND:
 		databuf[0] = 0x80;
@@ -993,24 +996,22 @@ static int BMA2x2_SetPowerMode(struct i2c_client *client, bool enable)
 		while (count < 10) {
 			res = bma_i2c_write_block(client,
 				BMA2x2_LOW_POWER_CTRL_REG, &databuf[1], 1);
-			msleep(20);
+			usleep_range(900, 1000);
 			if (res < 0)
 				GSE_ERR("write LOW_POWER_CTRL_REG failed!\n");
 			res = bma_i2c_write_block(client,
 					BMA2x2_MODE_CTRL_REG, &databuf[0], 1);
-			msleep(20);
+			usleep_range(900, 1000);
 			res = bma_i2c_write_block(client, 0x3E, &temp, 0x1);
 			if (res < 0)
 				GSE_ERR("write  config failed!\n");
 
-			msleep(20);
+			usleep_range(900, 1000);
 			res = bma_i2c_write_block(client, 0x3E, &temp, 0x1);
-			if (res < 0)
-				GSE_ERR("write  config failed!\n");
-
-			msleep(20);
 			if (res < 0)
 				GSE_ERR("write BMA2x2_MODE_CTRL_REG failed!\n");
+
+			usleep_range(1900, 2000);
 
 			res = bma_i2c_read_block(client,
 					BMA2x2_MODE_CTRL_REG, &temp0, 0x1);
@@ -1035,7 +1036,7 @@ static int BMA2x2_SetPowerMode(struct i2c_client *client, bool enable)
 				break;
 			}
 		}
-		msleep(20);
+		usleep_range(900, 1000);
 		break;
 	}
 

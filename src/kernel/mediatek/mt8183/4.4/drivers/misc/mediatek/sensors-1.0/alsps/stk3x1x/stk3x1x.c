@@ -896,7 +896,7 @@ int stk3x1x_write_sw_reset(struct i2c_client *client)
 		return -EFAULT;
 	}
 
-	msleep(20);
+	usleep_range(13000, 15000);
 	return 0;
 }
 
@@ -3013,17 +3013,24 @@ static int stk3x1x_suspend(struct device *dev)
 	err = stk3x1x_enable_als(obj->client, 0);
 	if (err) {
 		APS_ERR("disable als fail: %d\n", err);
-		return err;
+		goto exit_err;
 	}
 
 	atomic_set(&obj->ps_suspend, 1);
 	err = stk3x1x_enable_ps(obj->client, 0, 1);
 	if (err) {
 		APS_ERR("disable ps fail: %d\n", err);
-		return err;
+		goto exit_err;
 	}
 
 	return 0;
+exit_err:
+	atomic_set(&obj->als_suspend, 0);
+
+	alsps_driver_pause_polling(0);
+
+	return err;
+
 }
 
 static int stk3x1x_resume(struct device *dev)

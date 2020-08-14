@@ -2000,6 +2000,7 @@ VOID wlanWakeLockUninit(P_GLUE_INFO_T prGlueInfo)
 */
 /*----------------------------------------------------------------------------*/
 static struct lock_class_key rSpinKey[SPIN_LOCK_NUM];
+static struct lock_class_key rLockKey;
 static struct wireless_dev *wlanNetCreate(PVOID pvData)
 {
 	struct wireless_dev *prWdev = gprWdev;
@@ -3074,7 +3075,7 @@ static INT_32 wlanProbe(PVOID pvData)
 		INIT_WORK(&prGlueInfo->rDrvWork.rWork, wlanDrvCommonWork);
 		QUEUE_INITIALIZE(&prGlueInfo->rDrvWork.rWorkFuncQue);
 		spin_lock_init(&prGlueInfo->rDrvWork.rWorkFuncQueLock);
-		lockdep_set_class(&prGlueInfo->rDrvWork.rWorkFuncQueLock, &prGlueInfo->rDrvWork.rLockKey);
+		lockdep_set_class(&prGlueInfo->rDrvWork.rWorkFuncQueLock, &rLockKey);
 #if CFG_SUPPORT_WIFI_POWER_DEBUG
 		power_supply_reg_notifier(&wlan_psy_nb);
 #endif
@@ -3309,10 +3310,11 @@ static VOID wlanPsyWorkFunc(PUINT_8 pucParams)
 {
 	UINT_32 u4InfoBufLen;
 	P_GLUE_INFO_T prGlueInfo = *(P_GLUE_INFO_T *)pucParams;
+	PUINT_8 pucCharingStatus = &pucParams[sizeof(prGlueInfo)];
 
-	kalIoctl(prGlueInfo, wlanoidNotifyChargeFinish, NULL, 0, FALSE, FALSE, FALSE, &u4InfoBufLen);
+	kalIoctl(prGlueInfo, wlanoidNotifyChargeStatus,
+		 pucCharingStatus, kalStrLen(pucCharingStatus), FALSE, FALSE, FALSE, &u4InfoBufLen);
 }
-
 static int wlan_psy_notification(struct notifier_block *nb, unsigned long event, void *data)
 {
 	struct power_supply *psy = (struct power_supply *)data;
@@ -3327,15 +3329,21 @@ static int wlan_psy_notification(struct notifier_block *nb, unsigned long event,
 		return NOTIFY_OK;
 
 	if (!power_supply_get_property(psy, POWER_SUPPLY_PROP_STATUS, &status) &&
-		status.intval != last_status && last_status == POWER_SUPPLY_STATUS_CHARGING) {
+		status.intval != last_status) {
 		P_GLUE_INFO_T prGlueInfo = wlanGetGlueInfo();
 
-		if (prGlueInfo) {
-			static UINT_8 aucPsyWorkBuf[sizeof(struct DRV_COMMON_WORK_FUNC_T) + sizeof(prGlueInfo)];
+		if (prGlueInfo && (last_status == POWER_SUPPLY_STATUS_CHARGING ||
+		    status.intval == POWER_SUPPLY_STATUS_CHARGING)) {
+			static UINT_8 aucPsyWorkBuf[sizeof(struct DRV_COMMON_WORK_FUNC_T) + sizeof(prGlueInfo) + 18];
 			struct DRV_COMMON_WORK_FUNC_T *prPsyWork = (struct DRV_COMMON_WORK_FUNC_T *)&aucPsyWorkBuf[0];
 			P_GLUE_INFO_T *pprGlueInfo = (P_GLUE_INFO_T *)prPsyWork->params;
 
 			*pprGlueInfo = prGlueInfo;
+			if (last_status == POWER_SUPPLY_STATUS_CHARGING)
+				kalStrCpy(&prPsyWork->params[sizeof(prGlueInfo)], "Charging finished");
+			else
+				kalStrCpy(&prPsyWork->params[sizeof(prGlueInfo)], "Charging started");
+
 			prPsyWork->work_func = wlanPsyWorkFunc;
 			kalScheduleCommonWork(&prGlueInfo->rDrvWork, prPsyWork);
 		}

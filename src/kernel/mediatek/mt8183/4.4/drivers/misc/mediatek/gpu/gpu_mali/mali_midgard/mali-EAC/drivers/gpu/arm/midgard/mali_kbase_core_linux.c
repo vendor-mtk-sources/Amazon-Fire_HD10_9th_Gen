@@ -3303,7 +3303,7 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 
 	code = mt_get_chip_hw_code();
 	if (0x321 == code) {
-		// do something for Denali-1(6735)
+		// do something for abc123-1(6735)
 #ifdef CONFIG_MTK_CLKMGR
 #else	
 		kbdev->clk_mfg = devm_clk_get(&pdev->dev, "mfg-main");
@@ -3328,9 +3328,9 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 		}
 #endif
 	} else if (0x335 == code) {
-		 // do something for Denali-2(6735M)
+		 // do something for abc123-2(6735M)
 	} else if (0x337 == code) {
-		 // do something for Denali-3(6753)
+		 // do something for abc123-3(6753)
 	} else {
 		 // unknown chip ID, error !!
 	}

@@ -370,7 +370,7 @@ enum ENUM_WAKE_UP_T {
 	WAKE_TYPE_ARP,
 	WAKE_TYPE_1X,
 	WAKE_TYPE_OTHER_DATA,
-	WAKE_TYPE_FINISH_CHARGE,
+	WAKE_TYPE_CHARGE_STATUS,
 	WAKE_TYPE_BAR,
 	WAKE_TYPE_NO_PKT_DATA,
 	WAKE_TYPE_INVALID_SW_DEFINED,
@@ -438,7 +438,6 @@ struct DRV_COMMON_WORK_T {
 	struct work_struct rWork;
 	QUE_T rWorkFuncQue;
 	spinlock_t rWorkFuncQueLock;
-	struct lock_class_key rLockKey;
 };
 
 /*******************************************************************************

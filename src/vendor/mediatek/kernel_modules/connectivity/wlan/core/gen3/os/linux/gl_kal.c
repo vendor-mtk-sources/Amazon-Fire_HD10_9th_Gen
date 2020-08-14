@@ -6118,8 +6118,10 @@ VOID kalStatTRxPkts(P_GLUE_INFO_T prGlueInfo, struct sk_buff *prSkb, BOOLEAN fgT
 	pucIp = &prSkb->data[ETH_HLEN];
 	u2EthType = kalGetEthType(prSkb);
 
-	if (u2EthType != ETH_P_IPV4 && u2EthType != ETH_P_IPV6)
+	if (u2EthType != ETH_P_IPV4 && u2EthType != ETH_P_IPV6) {
 		kalStatOtherPkts(prGlueInfo, fgTx, u2EthType, 0);
+		return;
+	}
 
 	ucIpProto = (u2EthType == ETH_P_IPV4) ? pucIp[9] : pucIp[6];
 	if (ucIpProto == IP_PROTOCOL_TCP || ucIpProto == IP_PROTOCOL_UDP)

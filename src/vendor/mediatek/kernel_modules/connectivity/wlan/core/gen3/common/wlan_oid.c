@@ -13276,10 +13276,10 @@ WLAN_STATUS wlanoidNotifyTRxStats(IN P_ADAPTER_T prAdapter,
 	return WLAN_STATUS_SUCCESS;
 }
 
-WLAN_STATUS wlanoidNotifyChargeFinish(IN P_ADAPTER_T prAdapter,
+WLAN_STATUS wlanoidNotifyChargeStatus(IN P_ADAPTER_T prAdapter,
 	IN PVOID pvQueryBuffer, IN UINT_32 u4QueryBufferLen, OUT PUINT_32 pu4QueryInfoLen)
 {
-	glNotifyWakeups("Finish charge", WAKE_TYPE_FINISH_CHARGE);
+	glNotifyWakeups((PUINT_8)pvQueryBuffer, WAKE_TYPE_CHARGE_STATUS);
 	return WLAN_STATUS_SUCCESS;
 }
 #endif

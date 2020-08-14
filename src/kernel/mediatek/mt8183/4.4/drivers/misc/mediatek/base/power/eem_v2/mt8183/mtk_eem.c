@@ -285,6 +285,9 @@ static int get_devinfo(void)
 	for (i = 0; i < n; i++) {
 		det = id_to_eem_det(pi_eem_ctrl_id[i]);
 
+		if (!det->pi_efuse_count)
+			continue;
+
 		idx = i % det->pi_efuse_count;
 
 		if (!det->pi_efuse[idx])
