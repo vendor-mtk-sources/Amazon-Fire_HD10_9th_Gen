@@ -91,6 +91,7 @@ struct charger_ops {
 	int (*enable_cable_drop_comp)(struct charger_device *, bool en);
 
 	int (*set_mivr)(struct charger_device *, u32 uV);
+	int (*get_mivr)(struct charger_device *, u32 *uV);
 	int (*get_mivr_state)(struct charger_device *, bool *in_loop);
 
 	/* enable/disable powerpath */
@@ -142,6 +143,12 @@ struct charger_ops {
 
 	/* enable/disable IR compensation */
 	int (*enable_ir_comp)(struct charger_device *, bool en);
+	/* WPC */
+	int (*get_wpc_online)(struct charger_device *dev, bool *stat);
+	int (*do_wpc_algorithm)(struct charger_device *dev, void *data);
+	int (*force_enable_wpc_charge)(struct charger_device *dev, bool en);
+	int (*get_temp)(struct charger_device *dev);
+	int (*set_vout_en)(struct charger_device *dev, bool en);
 };
 
 static inline void *charger_dev_get_drvdata(const struct charger_device *charger_dev)
@@ -186,6 +193,7 @@ extern int charger_dev_get_constant_voltage(struct charger_device *charger_dev, 
 extern int charger_dev_dump_registers(struct charger_device *charger_dev);
 extern int charger_dev_enable_vbus_ovp(struct charger_device *charger_dev, bool en);
 extern int charger_dev_set_mivr(struct charger_device *charger_dev, u32 uV);
+extern int charger_dev_get_mivr(struct charger_device *charger_dev, u32 *uV);
 extern int charger_dev_get_mivr_state(struct charger_device *charger_dev, bool *in_loop);
 extern int charger_dev_do_event(struct charger_device *charger_dev, u32 event, u32 args);
 extern int charger_dev_is_powerpath_enabled(struct charger_device *charger_dev, bool *en);
@@ -203,6 +211,11 @@ extern int charger_dev_run_aicl(struct charger_device *charger_dev, u32 *uA);
 extern int charger_dev_reset_eoc_state(struct charger_device *charger_dev);
 extern int charger_dev_safety_check(struct charger_device *charger_dev);
 extern int charger_dev_enable_ir_comp(struct charger_device *charger_dev, bool en);
+/* WPC */
+extern int wireless_charger_dev_get_online(struct charger_device *chg_dev, bool *stat);
+extern int wireless_charger_dev_do_algorithm(struct charger_device *chg_dev, void *data);
+extern int wireless_charger_dev_force_en_charge(struct charger_device *chg_dev, bool en);
+extern int wireless_charger_dev_set_vout_en(struct charger_device *chg_dev, bool en);
 
 /* PE */
 extern int charger_dev_send_ta_current_pattern(struct charger_device *charger_dev, bool is_increase);

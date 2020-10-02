@@ -1387,12 +1387,12 @@ static int pbm_thread_handle(void *data)
 {
 	while (1) {
 
-		set_current_state(TASK_INTERRUPTIBLE);
 
 		if (kthread_should_stop())
 			break;
 
 		if (atomic_read(&kthread_nreq) <= 0) {
+			set_current_state(TASK_INTERRUPTIBLE);
 			schedule();
 			continue;
 		}

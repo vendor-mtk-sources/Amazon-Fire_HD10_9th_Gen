@@ -48,6 +48,42 @@ int display_bias_regulator_init(void)
 }
 EXPORT_SYMBOL(display_bias_regulator_init);
 
+
+int display_bias_enable_vol(int pos_uv, int neg_uv)
+{
+	int ret = 0;
+	int retval = 0;
+
+	display_bias_regulator_init();
+
+	pr_info("display bias set pos val:%d, neg val:%d\n", pos_uv, neg_uv);
+
+	/* set voltage with min & max*/
+	ret = regulator_set_voltage(disp_bias_pos, pos_uv, pos_uv);
+	if (ret < 0)
+		pr_err("set voltage disp_bias_pos fail, ret = %d\n", ret);
+	retval |= ret;
+
+	ret = regulator_set_voltage(disp_bias_neg, neg_uv, neg_uv);
+	if (ret < 0)
+		pr_err("set voltage disp_bias_neg fail, ret = %d\n", ret);
+	retval |= ret;
+
+	/* enable regulator */
+	ret = regulator_enable(disp_bias_pos);
+	if (ret < 0)
+		pr_err("enable regulator disp_bias_pos fail, ret = %d\n", ret);
+	retval |= ret;
+
+	ret = regulator_enable(disp_bias_neg);
+	if (ret < 0)
+		pr_err("enable regulator disp_bias_neg fail, ret = %d\n", ret);
+	retval |= ret;
+
+	return retval;
+}
+EXPORT_SYMBOL(display_bias_enable_vol);
+
 int display_bias_enable(void)
 {
 	int ret = 0;

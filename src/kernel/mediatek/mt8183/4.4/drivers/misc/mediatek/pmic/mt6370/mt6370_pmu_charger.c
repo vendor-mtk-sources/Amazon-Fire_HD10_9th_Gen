@@ -39,6 +39,10 @@
 #include "inc/mt6370_pmu.h"
 #include <mt-plat/charger_class.h>
 
+#ifdef CONFIG_FUSB251
+#include <misc/fusb251_notify.h>
+#endif
+
 #define MT6370_PMU_CHARGER_DRV_VERSION	"1.1.24_MTK"
 
 #define THRESHOLD_ENABLE_HIGHER_OCP	(2500*1000)
@@ -135,6 +139,13 @@ struct mt6370_pmu_charger_data {
 	int tchg;
 	atomic_t tcpc_usb_connected;
 	struct work_struct chgdet_work;
+
+	struct pinctrl *pwr_switch_pinctrl;
+	struct pinctrl_state *pwr_switch_default;
+	struct pinctrl_state *sgm2541_auto;
+	struct pinctrl_state *sgm2541_slave;
+	struct pinctrl_state *otg_enable;
+	struct pinctrl_state *otg_disable;
 };
 
 /* These default values will be used if there's no property in dts */
@@ -1150,7 +1161,7 @@ static int mt6370_get_ieoc(struct mt6370_pmu_charger_data *chg_data, u32 *ieoc)
 	return ret;
 }
 
-static int mt6370_get_mivr(struct mt6370_pmu_charger_data *chg_data, u32 *mivr)
+static int __mt6370_get_mivr(struct mt6370_pmu_charger_data *chg_data, u32 *mivr)
 {
 	int ret = 0;
 	u8 reg_mivr = 0;
@@ -1364,7 +1375,7 @@ static int __mt6370_run_aicl(struct mt6370_pmu_charger_data *chg_data)
 		goto out;
 	}
 
-	ret = mt6370_get_mivr(chg_data, &mivr);
+	ret = __mt6370_get_mivr(chg_data, &mivr);
 	if (ret < 0)
 		goto out;
 
@@ -1811,7 +1822,7 @@ static int mt6370_is_power_path_enable(struct charger_device *chg_dev, bool *en)
 		dev_get_drvdata(&chg_dev->dev);
 	u32 mivr = 0;
 
-	ret = mt6370_get_mivr(chg_data, &mivr);
+	ret = __mt6370_get_mivr(chg_data, &mivr);
 	*en = (mivr == MT6370_MIVR_MAX ? false : true);
 
 	return ret;
@@ -1905,6 +1916,17 @@ static int mt6370_set_mivr(struct charger_device *chg_dev, u32 uV)
 	return ret;
 }
 
+static int mt6370_get_mivr(struct charger_device *chg_dev, u32 *uv)
+{
+	int ret = 0;
+	struct mt6370_pmu_charger_data *chg_data =
+		dev_get_drvdata(&chg_dev->dev);
+
+	ret = __mt6370_get_mivr(chg_data, uv);
+
+	return ret;
+}
+
 static int mt6370_get_cv(struct charger_device *chg_dev, u32 *cv)
 {
 	int ret = 0;
@@ -1946,6 +1968,9 @@ static int mt6370_set_otg_current_limit(struct charger_device *chg_dev, u32 uA)
 	struct mt6370_pmu_charger_data *chg_data =
 		dev_get_drvdata(&chg_dev->dev);
 
+	if (get_charger_by_name("wireless_chg"))
+		return ret;
+
 	reg_ilimit = mt6370_find_closest_reg_value_via_table(
 		mt6370_otg_oc_threshold,
 		ARRAY_SIZE(mt6370_otg_oc_threshold),
@@ -1975,6 +2000,22 @@ static int mt6370_enable_otg(struct charger_device *chg_dev, bool en)
 	u8 lg_slew_rate = en ? 0x7c : 0x73;
 
 	dev_info(chg_data->dev, "%s: en = %d\n", __func__, en);
+
+	if (get_charger_by_name("wireless_chg")) {
+		if (en) {
+			pinctrl_select_state(chg_data->pwr_switch_pinctrl, chg_data->sgm2541_slave);
+			mdelay(3);
+			pinctrl_select_state(chg_data->pwr_switch_pinctrl, chg_data->otg_enable);
+		} else {
+			pinctrl_select_state(chg_data->pwr_switch_pinctrl, chg_data->otg_disable);
+			/* To ensure that usb_otg_en level is low. */
+			msleep(50);
+			pinctrl_select_state(chg_data->pwr_switch_pinctrl, chg_data->sgm2541_auto);
+		}
+
+		dev_info(chg_data->dev, "OTG is powered by vsys on wpc configuration.\n");
+		return ret;
+	}
 
 	mt6370_enable_hidden_mode(chg_data, true);
 
@@ -2689,7 +2730,7 @@ static int mt6370_dump_register(struct charger_device *chg_dev)
 	ret = mt6370_get_aicr(chg_dev, &aicr);
 	ret = mt6370_get_charging_status(chg_data, &chg_status);
 	ret = mt6370_get_ieoc(chg_data, &ieoc);
-	ret = mt6370_get_mivr(chg_data, &mivr);
+	ret = __mt6370_get_mivr(chg_data, &mivr);
 	ret = mt6370_get_cv(chg_dev, &cv);
 	ret = mt6370_is_charging_enable(chg_data, &chg_en);
 	ret = mt6370_get_adc(chg_data, MT6370_ADC_VSYS, &adc_vsys);
@@ -3465,6 +3506,9 @@ static irqreturn_t mt6370_pmu_ovpctrl_uvp_d_evt_irq_handler(int irq, void *data)
 #ifdef CONFIG_AMAZON_LD
 	ld_vbus_changed();
 #endif
+#ifdef CONFIG_FUSB251
+	fusb251_vbus_changed_notify();
+#endif
 
 	if (chg_data->chg_desc->en_tcpc)
 		return IRQ_HANDLED;
@@ -3620,12 +3664,76 @@ static void mt6370_pmu_charger_irq_register(struct platform_device *pdev)
 	}
 }
 
+int pwr_switch_get_gpio_info(struct device *dev,
+		struct mt6370_pmu_charger_data *chg_data)
+{
+	int ret;
+
+	dev_info(dev, "%s: start\n", __func__);
+	chg_data->pwr_switch_pinctrl = devm_pinctrl_get(dev);
+
+	if (IS_ERR(chg_data->pwr_switch_pinctrl)) {
+		ret = PTR_ERR(chg_data->pwr_switch_pinctrl);
+		dev_err(chg_data->dev, "Cannot find pinctrl\n");
+		goto out;
+	}
+	chg_data->pwr_switch_default = pinctrl_lookup_state(
+			chg_data->pwr_switch_pinctrl,
+			"pwr_switch_default");
+	if (IS_ERR(chg_data->pwr_switch_default)) {
+		ret = PTR_ERR(chg_data->pwr_switch_default);
+		dev_err(chg_data->dev, "Cannot find pinctrl default\n");
+		goto out;
+	} else {
+		pinctrl_select_state(chg_data->pwr_switch_pinctrl,
+			chg_data->pwr_switch_default);
+	}
+	chg_data->sgm2541_auto = pinctrl_lookup_state(
+			chg_data->pwr_switch_pinctrl,
+			"sgm2541_auto");
+	if (IS_ERR(chg_data->sgm2541_auto)) {
+		ret = PTR_ERR(chg_data->sgm2541_auto);
+		dev_err(chg_data->dev, "Cannot find pinctrl sgm2541_auto!\n");
+		goto out;
+	}
+	chg_data->sgm2541_slave = pinctrl_lookup_state(
+			chg_data->pwr_switch_pinctrl,
+			"sgm2541_slave");
+	if (IS_ERR(chg_data->sgm2541_slave)) {
+		ret = PTR_ERR(chg_data->sgm2541_slave);
+		dev_err(chg_data->dev, "Cannot find pinctrl sgm2541_slave!\n");
+		goto out;
+	}
+	chg_data->otg_enable = pinctrl_lookup_state(
+			chg_data->pwr_switch_pinctrl,
+			"otg_enable");
+	if (IS_ERR(chg_data->otg_enable)) {
+		ret = PTR_ERR(chg_data->otg_enable);
+		dev_err(chg_data->dev, "Cannot find pinctrl otg_enable!\n");
+		goto out;
+	}
+	chg_data->otg_disable = pinctrl_lookup_state(
+			chg_data->pwr_switch_pinctrl,
+			"otg_disable");
+	if (IS_ERR(chg_data->otg_disable)) {
+		ret = PTR_ERR(chg_data->otg_disable);
+		dev_err(chg_data->dev, "Cannot find pinctrl otg_disable!\n");
+		goto out;
+	}
+	dev_info(dev, "%s: end\n", __func__);
+	return 0;
+
+out:
+	return ret;
+}
+
 static inline int mt_parse_dt(struct device *dev,
 	struct mt6370_pmu_charger_data *chg_data)
 {
 	struct mt6370_pmu_charger_desc *chg_desc = NULL;
 	struct device_node *np = dev->of_node;
 	struct i2c_client *i2c = chg_data->chip->i2c;
+	uint32_t val = 0;
 
 	dev_info(chg_data->dev, "%s\n", __func__);
 	chg_data->chg_desc = &mt6370_default_chg_desc;
@@ -3711,6 +3819,11 @@ static inline int mt_parse_dt(struct device *dev,
 	chg_desc->en_polling = of_property_read_bool(np, "enable_polling");
 	chg_desc->en_tcpc = of_property_read_bool(np, "en_tcpc");
 	dev_info(chg_data->dev, "en_tcpc = %d\n", chg_desc->en_tcpc);
+
+	if (of_property_read_u32(np, "enable_load_switch", &val) == 0) {
+		if (val == 1)
+			pwr_switch_get_gpio_info(dev, chg_data);
+	}
 
 	chg_data->chg_desc = chg_desc;
 
@@ -3839,6 +3952,7 @@ static struct charger_ops mt6370_chg_ops = {
 	.set_constant_voltage = mt6370_set_cv,
 	.kick_wdt = mt6370_kick_wdt,
 	.set_mivr = mt6370_set_mivr,
+	.get_mivr = mt6370_get_mivr,
 	.is_charging_done = mt6370_is_charging_done,
 	.get_zcv = mt6370_get_zcv,
 	.run_aicl = mt6370_run_aicl,

@@ -126,7 +126,7 @@ static ssize_t mdump_compdump_binary_read(struct file *filp,
 		struct bin_attribute *attr,
 		char *buf, loff_t off, size_t count)
 {
-	unsigned int expbase;
+	unsigned long long expbase;
 	struct mdcompbinattr *mdcattr = (struct mdcompbinattr *) attr;
 
 	if (off > mdcattr->binattr.size)

@@ -153,7 +153,8 @@ void PMIC_LP_INIT_SETTING(void)
 	pmic_ldo_vsram_others_lp(SRCLKEN0, 1, HW_LP);
 	pmic_ldo_vsram_proc11_lp(SW, 1, SW_OFF);
 	pmic_ldo_vxo22_lp(SRCLKEN0, 1, HW_LP);
-	pmic_ldo_vrf18_lp(SRCLKEN1, 1, HW_OFF);
+	/* remove due to confige done in lk */
+	/* pmic_ldo_vrf18_lp(SRCLKEN1, 1, HW_OFF); */
 	pmic_ldo_vrf12_lp(SRCLKEN1, 1, HW_OFF);
 	pmic_ldo_vefuse_lp(SW, 1, SW_OFF);
 	pmic_ldo_vcn33_lp(SW, 1, SW_OFF);
@@ -195,7 +196,8 @@ void PMIC_LP_INIT_SETTING(void)
 	pmic_ldo_vsram_others_lp(SRCLKEN2, 1, HW_LP);
 	pmic_ldo_vsram_proc11_lp(SW, 1, SW_OFF);
 	pmic_ldo_vxo22_lp(SRCLKEN2, 1, HW_LP);
-	pmic_ldo_vrf18_lp(SRCLKEN1, 1, HW_OFF);
+	/* remove due to confige done in lk */
+	/* pmic_ldo_vrf18_lp(SRCLKEN1, 1, HW_OFF); */
 	pmic_ldo_vrf12_lp(SRCLKEN1, 1, HW_OFF);
 	pmic_ldo_vefuse_lp(SW, 1, SW_OFF);
 	pmic_ldo_vcn33_lp(SW, 1, SW_OFF);

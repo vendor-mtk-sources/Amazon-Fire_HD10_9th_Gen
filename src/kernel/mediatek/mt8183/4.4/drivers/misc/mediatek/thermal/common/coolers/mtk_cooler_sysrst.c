@@ -36,6 +36,8 @@
 #include <linux/sign_of_life.h>
 #endif
 
+#include "thermal_core.h"
+
 /*=============================================================
  *Local variable definition
  *=============================================================
@@ -75,6 +77,9 @@ static int sysrst_cpu_get_cur_state(struct thermal_cooling_device *cdev, unsigne
 
 static int sysrst_cpu_set_cur_state(struct thermal_cooling_device *cdev, unsigned long state)
 {
+	struct thermal_instance *instance;
+	int trip_temp;
+
 	cl_dev_sysrst_state = state;
 
 	if (cl_dev_sysrst_state == 1) {
@@ -82,6 +87,15 @@ static int sysrst_cpu_set_cur_state(struct thermal_cooling_device *cdev, unsigne
 		pr_err("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 		pr_err("*****************************************\n");
 		pr_err("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+
+		list_for_each_entry(instance, &(cdev->thermal_instances), cdev_node) {
+			if (instance->tz && instance->tz->ops && instance->tz->ops->get_trip_temp) {
+				instance->tz->ops->get_trip_temp(instance->tz, instance->trip, &trip_temp);
+				pr_err("[%s][%s]type:[%s] Thermal reset CPU, current temp=%d, trip=%d, trip_temp=%d\n",
+					__func__, dev_name(&(instance->tz->device)), instance->tz->type,
+					instance->tz->temperature, instance->trip, trip_temp);
+			}
+		}
 
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 		life_cycle_set_thermal_shutdown_reason(THERMAL_SHUTDOWN_REASON_SOC);
@@ -142,6 +156,9 @@ static int sysrst_tsap_get_cur_state(struct thermal_cooling_device *cdev, unsign
 
 static int sysrst_tsap_set_cur_state(struct thermal_cooling_device *cdev, unsigned long state)
 {
+	struct thermal_instance *instance;
+	int trip_temp;
+
 	cl_dev_sysrst_state_tsap = state;
 
 	if (cl_dev_sysrst_state_tsap == 1) {
@@ -150,7 +167,20 @@ static int sysrst_tsap_set_cur_state(struct thermal_cooling_device *cdev, unsign
 		pr_err("*****************************************\n");
 		pr_err("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 
-
+		list_for_each_entry(instance, &(cdev->thermal_instances), cdev_node) {
+			if (instance->tz && instance->tz->ops && instance->tz->ops->get_trip_temp) {
+				instance->tz->ops->get_trip_temp(instance->tz, instance->trip, &trip_temp);
+				pr_err("[%s][%s]type:[%s] Thermal reset BTS, current temp=%d, trip=%d, trip_temp=%d\n",
+					__func__, dev_name(&(instance->tz->device)), instance->tz->type,
+					instance->tz->temperature, instance->trip, trip_temp);
+			}
+		}
+#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
+		life_cycle_set_thermal_shutdown_reason(THERMAL_SHUTDOWN_REASON_BTS);
+#endif
+		/* To trigger data abort to reset the system
+		 * for thermal protection.
+		 */
 		kernel_restart(NULL);
 
 	}

@@ -82,7 +82,7 @@ extern void mtk_wdt_mode_config(bool dual_mode_en, bool irq, bool ext_en, bool e
 
 static life_cycle_reason_t lc_boot = LIFE_CYCLE_NOT_AVAILABLE;
 
-static void rtc_acquire_lock(void)
+void __attribute__((weak)) rtc_acquire_lock(void)
 {
 	/* FIXME
 	 * MTK RTC code doesn't use any lock in their code drop.
@@ -91,7 +91,7 @@ static void rtc_acquire_lock(void)
 	return;
 }
 
-static void rtc_release_lock(void)
+void __attribute__((weak)) rtc_release_lock(void)
 
 {
 	return;

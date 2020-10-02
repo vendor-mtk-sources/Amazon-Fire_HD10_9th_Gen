@@ -66,7 +66,9 @@
 #define IDME_OF_WIFI_MFG        "/idme/wifi_mfg"
 #define IDME_OF_BOARD_ID	"/idme/board_id"
 #define BOARD_ID_MAVERICK_STR "003F"
+#define BOARD_ID_TRONA_STR "005E"
 char idme_board_id[17];
+unsigned int g_board_type;
 #endif
 
 static struct wireless_dev *gprWdev;
@@ -773,8 +775,76 @@ static COUNTRY_POWER_TABLE power_table_maverick[] = {
 			0x0, 0x1C, 0x15, 0x16), /* 5G band edge */
 };
 
+static COUNTRY_POWER_TABLE power_table_trona[] = {
+	COUNTRY_PWR_TBL("WW", /* country code */
+			0x21, /* CCK */
+			0x21, 0x21, 0x21, 0x21, 0x21, /* OFDM */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* HT20 */
+			0x22, 0x22, 0x22, 0x22, 0x22, 0x22, /* HT40 */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_OFDM */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_HT20 */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT40 */
+			0x0, 0x1D, 0x1A, 0x1D, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* AC */
+			0xFE, 0xFE, 0xFE, /* VHT_OFFSET */
+			0x1, 0x1F, 0x1B, 0x15), /* 5G band edge */
+	COUNTRY_PWR_TBL("US", /* country code */
+			0x21, /* CCK */
+			0x21, 0x21, 0x21, 0x21, 0x21, /* OFDM */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* HT20 */
+			0x21, 0x21, 0x21, 0x21, 0x21, 0x21, /* HT40 */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_OFDM */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT20 */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT40 */
+			0x0, 0x1D, 0x1A, 0x1D, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* AC */
+			0xFE, 0xFE, 0xFE, /* VHT_OFFSET */
+			0x1, 0x1F, 0x1B, 0x15), /* 5G band edge */
+	COUNTRY_PWR_TBL("EU", /* country code */
+			0x24, /* CCK */
+			0x22, 0x22, 0x22, 0x22, 0x22, /* OFDM */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24, /* HT20 */
+			0x22, 0x22, 0x22, 0x22, 0x22, 0x22, /* HT40 */
+			0x21, 0x21, 0x21, 0x21, 0x21, /* 5G_OFDM */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT20 */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT40 */
+			0x0, 0x22, 0x1C, 0x1A, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* AC */
+			0xFE, 0xFE, 0xFE, /* VHT_OFFSET */
+			0x0, 0x1C, 0x15, 0x16), /* 5G band edge */
+	COUNTRY_PWR_TBL("JP", /* country code */
+			0x26, /* CCK */
+			0x23, 0x23, 0x23, 0x23, 0x23, /* OFDM */
+			0x25, 0x25, 0x25, 0x25, 0x25, 0x25, /* HT20 */
+			0x1A, 0x1A, 0x1A, 0x1A, 0x1A, 0x1A, /* HT40 */
+			0x20, 0x20, 0x20, 0x20, 0x20, /* 5G_OFDM */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_HT20 */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT40 */
+			0x0, 0x22, 0x1C, 0x1A, /* 2.4G band edge */
+			0x1, /* 5G support */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* AC */
+			0xFF, 0xFF, 0xFF, /* VHT_OFFSET */
+			0x0, 0x1C, 0x15, 0x16), /* 5G band edge */
+};
+
 struct board_id_power_table_map board_id_power_table_list[] = {
 	{BOARD_ID_MAVERICK_STR, power_table_maverick, ARRAY_SIZE(power_table_maverick)},
+	{BOARD_ID_TRONA_STR, power_table_trona, ARRAY_SIZE(power_table_trona)},
+};
+#endif
+
+#if CFG_SUPPORT_ANT_DIVERSITY
+struct board_id_ant_orientation_map {
+	unsigned int dev_type_id;
+	unsigned int ant_placement[4];
+};
+
+struct board_id_ant_orientation_map board_id_ant_orientation_list[] = {
+	{ DEV_TYPE_ID_MAVERICK, ant_placement_maverick},
+	{ DEV_TYPE_ID_TRONA, ant_placement_trona},
 };
 #endif
 
@@ -1647,6 +1717,19 @@ void wlanMonWorkHandler(struct work_struct *work)
 }
 #endif
 
+#if CFG_SUPPORT_ANT_DIVERSITY
+PUINT_32 wlanGetUpdatedOrientationTable(void)
+{
+	UINT_8 i = 0;
+
+	for (i = 0; i < ARRAY_SIZE(board_id_ant_orientation_list); i++) {
+		if (g_board_type == board_id_ant_orientation_list[i].dev_type_id)
+			return board_id_ant_orientation_list[i].ant_placement;
+	}
+	DBGLOG(INIT, ERROR, "[AntS] unknown dev_type_id. Use default ant_orientation_table\n");
+	return board_id_ant_orientation_list[0].ant_placement;
+}
+#endif
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief Update channel table for cfg80211 based on current country domain
@@ -2854,8 +2937,7 @@ static INT_32 wlanProbe(PVOID pvData)
 #endif
 	{
 		glLoadNvram(prGlueInfo, &prGlueInfo->rRegInfo);
-		if (prGlueInfo->fgNvramAvailable == FALSE)
-		{
+		if (prGlueInfo->fgNvramAvailable == FALSE) {
 			wlanGetDefaultWifiMfg(&prGlueInfo->rRegInfo);
 			prGlueInfo->fgNvramAvailable = TRUE;
 		}
@@ -2863,17 +2945,27 @@ static INT_32 wlanProbe(PVOID pvData)
 #ifdef CONFIG_IDME
 		idme_get_mac_addr(&prGlueInfo->rRegInfo);
 		idme_get_board_id(prGlueInfo);
+		g_board_type = idme_get_board_type();
+		DBGLOG(INIT, INFO, "g_board_type = %x\n", g_board_type);
 #endif
 #if CFG_SUPPORT_ANT_DIVERSITY
 		prGlueInfo->fgIsAntSwitchDisable = idme_wifi_mfg.aucReserved2[0];
 		prGlueInfo->fgIsHwSupportAntSw = wmt_plat_is_support_ant_sw();
-		prGlueInfo->ucPanelType = disp_lcm_get_vendor_id();
-		prGlueInfo->ucASGoodPanel = ANT_SWITCH_GOOD_PANEL;
+
+		if (disp_lcm_get_vendor_id() >= 0)
+			prGlueInfo->ucPanelType = disp_lcm_get_vendor_id();
+		else {
+			prGlueInfo->ucPanelType = 0;
+			DBGLOG(INIT, WARN, "Get invalid LCM vendor id, set PanelType to 0\n");
+		}
+
 		prGlueInfo->ucPanelIdmePattern = strcmp(idme_board_id, BOARD_ID_MAVERICK_EVT) ? ANT_SWITCH_PATTERN_IMDE_ONLY : ANT_SWITCH_PANEL_IDME_PATTERN;
+		prGlueInfo->ucASGoodPanel = ANT_SWITCH_GOOD_PANEL;
 		prGlueInfo->fgIsEnableAntSwQuery = TRUE;
 		prGlueInfo->fgWas1stSwitch = TRUE;
 		prGlueInfo->fgIsEnableDelaySwap = TRUE;
 		prGlueInfo->u4AsDelayMSec = AIS_ANT_SW_DELAY_MSEC;
+		prGlueInfo->prAdapter->rWifiVar.rAisAntSwitchInfo.ant_placement_table = wlanGetUpdatedOrientationTable();
 #endif
 
 		/* kalMemCopy(&prGlueInfo->rRegInfo, prRegInfo, sizeof(REG_INFO_T)); */

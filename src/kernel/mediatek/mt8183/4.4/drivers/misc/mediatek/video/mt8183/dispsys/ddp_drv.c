@@ -566,6 +566,7 @@ static void __exit disp_exit(void)
 
 static int __init disp_late(void)
 {
+#if !defined(CONFIG_LCM_PMIC_MULTI_VOLTAGE)
 	int ret = 0;
 
 	DDPMSG("disp driver(1) disp_late begin\n");
@@ -577,6 +578,7 @@ static int __init disp_late(void)
 	display_bias_enable();
 
 	DDPMSG("disp driver(1) disp_late end\n");
+#endif
 	return 0;
 }
 

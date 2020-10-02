@@ -4,6 +4,8 @@
  * Copyright (C) 2011 Texas Instruments Incorporated - http://www.ti.com/
  * Author: Dan Murphy <DMurphy@ti.com>
  *
+ * Copyright (C) 2019-2020 Amazon Technologies Inc. All rights reserved.
+ *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
  * may be copied, distributed, and modified under those terms.
@@ -34,7 +36,7 @@ struct trip_t {
 	unsigned long temp;
 	enum thermal_trip_type type;
 	unsigned long hyst;
-#ifdef CONFIG_rbc123
+#ifdef CONFIG_abe123
 	struct cdev_t cdev[THERMAL_MAX_TRIPS];
 #endif
 };
@@ -59,12 +61,38 @@ struct mtk_cooler_platform_data {
 	int levels[THERMAL_MAX_TRIPS];
 };
 
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+struct vs_thermal_platform_data {
+	int num_trips;
+	enum thermal_device_mode mode;
+	int polling_delay;
+	struct list_head ts_list;
+	struct thermal_zone_params tzp;
+	struct trip_t trips[THERMAL_MAX_TRIPS];
+	int num_cdevs;
+	char cdevs[THERMAL_MAX_TRIPS][THERMAL_NAME_LENGTH];
+};
+
+struct vs_cooler_platform_data {
+	char type[THERMAL_NAME_LENGTH];
+	unsigned long state;
+	unsigned long max_state;
+	struct thermal_cooling_device *cdev;
+	int level;
+	int max_level;
+	int thermal_cooler_id;
+	int levels[THERMAL_MAX_TRIPS];
+};
+#endif
+
 /**
  * struct virtual_sensor_params  - Structure for each virtual sensor params.
  * @alpha:  Moving average coefficient
  * @offset: Temperature offset
  * @weight: Weight
  * @select_device: Decide to register which thermalzone device
+ * if defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
+ * @thermal_sensor_id: Decide to get which thermalzone device temperature.
  * @aux_channel_num: the thermistor index
  */
 struct thermal_dev_params {
@@ -72,6 +100,9 @@ struct thermal_dev_params {
 	int alpha;
 	int weight;
 	int select_device;
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+	int thermal_sensor_id;
+#endif
 	int aux_channel_num;
 };
 
@@ -82,6 +113,8 @@ struct thermal_dev_params {
  * @alpha: The alpha-name in DTS
  * @weight: The alpha-name in DTS
  * @select_device: The weight-name in DTS
+ * if defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
+ * @thermal_sensor_id: The thermal_sensor_id name in DTS
  * @aux_channel_num: The aux-channel-num-name in DTS
  */
 struct thermal_dev_node_names {
@@ -91,6 +124,9 @@ struct thermal_dev_node_names {
 	char weight_name[NODE_NAME_MAX];
 	char weight_invert_name[NODE_NAME_MAX];
 	char select_device_name[NODE_NAME_MAX];
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+	char thermal_sensor_id[NODE_NAME_MAX];
+#endif
 	char aux_channel_num_name[NODE_NAME_MAX];
 };
 
@@ -145,19 +181,68 @@ struct virtual_sensor_temp_sensor {
 struct virtual_sensor_thermal_zone {
 	struct thermal_zone_device *tz;
 	struct work_struct therm_work;
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+	struct vs_thermal_platform_data *pdata;
+#else
 	struct mtk_thermal_platform_data *pdata;
+#endif
 #ifdef CONFIG_AMAZON_METRICS_LOG
 	atomic_t query_count;
 	unsigned int mask;
 #endif
 };
 
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+struct cooler_sort_list {
+	struct vs_cooler_platform_data *pdata;
+	struct list_head list;
+	struct mutex update_mutex;
+};
+
+extern int thermal_level_compare(struct vs_cooler_platform_data *cooler_data,
+			struct cooler_sort_list *head, bool positive_seq);
+
+enum vs_thermal_sensor_id {
+	VS_THERMAL_SENSOR_WMT = 0,
+	VS_THERMAL_SENSOR_BATTERY,
+	VS_THERMAL_SENSOR_GPU,
+	VS_THERMAL_SENSOR_PMIC,
+	VS_THERMAL_SENSOR_CPU,
+	VS_THERMAL_SENSOR_THERMISTOR,
+	VS_THERMAL_SENSOR_WIRELESS_CHG,
+	VS_THERMAL_SENSOR_CHARGER,
+	VS_THERMAL_SENSOR_COUNT
+};
+
+enum vs_thermal_cooler_id {
+	VS_THERMAL_COOLER_BCCT = 0,
+	VS_THERMAL_COOLER_BACKLIGHT,
+	VS_THERMAL_COOLER_BUDGET,
+	VS_THERMAL_COOLER_WIRELESS_CHG,
+	VS_THERMAL_COOLER_COUNT
+};
+
+/* Get the current temperature of the thermal sensor. */
+int vs_thermal_sensor_get_temp(enum vs_thermal_sensor_id id, int index);
+/* Set a level limit via the thermal cooler. */
+int vs_set_cooling_level(struct thermal_cooling_device *cdev,
+	enum vs_thermal_cooler_id id, int level_limit);
+/* Returns the temperature value of wpc in milli degrees Celsius. */
+extern int vs_wpc_read_temp(void);
+extern int init_vs_thermal_platform_data(void);
+/* Set cpu power limit */
+extern void set_cpu_power_limit(int power_limit);
+extern int set_shutdown_enable_dcap(struct device *dev);
+
+#else
 struct cooler_sort_list{
 	struct mtk_cooler_platform_data *pdata;
 	struct list_head list;
 };
 
-extern int thermal_level_compare(struct mtk_cooler_platform_data *cooler_data, struct cooler_sort_list *head, bool positive_seq);
+extern int thermal_level_compare(struct mtk_cooler_platform_data *cooler_data,
+		struct cooler_sort_list *head, bool positive_seq);
+#endif
 
 void last_kmsg_thermal_shutdown(void);
 
@@ -168,7 +253,13 @@ int thermal_dev_register(struct thermal_dev *tdev);
 void thermal_parse_node_int(const struct device_node *np,
 			const char *node_name, int *cust_val);
 struct thermal_dev_params *thermal_sensor_dt_to_params(struct device *dev,
-			struct thermal_dev_params *params, struct thermal_dev_node_names *name_params);
+		struct thermal_dev_params *params,
+		struct thermal_dev_node_names *name_params);
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+void cooler_init_cust_data_from_dt(struct platform_device *dev,
+				struct vs_cooler_platform_data *pcdata);
+#else
 void cooler_init_cust_data_from_dt(struct platform_device *dev,
 				struct mtk_cooler_platform_data *pcdata);
+#endif
 #endif

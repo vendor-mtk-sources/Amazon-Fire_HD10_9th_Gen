@@ -273,6 +273,7 @@ struct fgd_nl_msg_t {
 enum Fg_data_type {
 	FUEL_GAUGE_TABLE_CUSTOM_DATA,
 	FGD_CMD_PARAM_T_CUSTOM,
+	FG_LOG_DATA,
 
 	FG_DATA_TYPE_NUMBER
 };
@@ -521,6 +522,63 @@ struct fuel_gauge_custom_data {
 
 };
 
+struct fuel_gauge_log_data {
+	/* index 1 */
+	int	gm30_soc;
+	int	gm30_fg_c_soc;
+	int	gm30_fg_v_soc;
+	int	gm30_ui_soc;
+
+	int	gm30_vc_diff;
+	int	gm30_vc_mode;
+
+	int	gm30_init_vbat;
+
+	int	gm30_t_d0;
+	int	gm30_T_table;
+	int	gm30_T_table_c;
+
+	/* index 11 */
+	int	gm30_fg_c_d0_soc;
+	int	gm30_fg_v_d0_soc;
+
+	int	gm30_quse;
+	int	gm30_quse_wo_lf;
+	int	gm30_quse_tb1;
+	int	gm30_quse_wo_lf_tb1;
+
+	int	gm30_aging_factor;
+	int	gm30_bat_cycle;
+
+	int	gm30_full_tracking_enable;
+	int	gm30_low_tracking_enable;
+	int	gm30_pre_low_tracking_enable;
+
+	/* index 22 */
+	int	gm30_keep_100;
+	int	gm30_re_charging_enable;
+
+	int	gm30_is_charger_exist;
+	int	gm30_soc_100;
+	int	gm30_cv_soc;
+	int	gm30_batterypseudo1;
+	int	gm30_DC_ratio;
+
+	int	gm30_car;
+	int	gm30_car_v;
+
+	/* index 31 */
+	int	gm30_qmax_t_0ma;
+	int	gm30_qmax_t_0ma_tb1;
+
+	int	gm30_full_tracking_bat_int2_lt;
+
+	int	gm30_init_path;
+
+	int	gm30_vboot;
+	int	gm30_vboot_c;
+};
+
 struct FUELGAUGE_TEMPERATURE {
 	signed int BatteryTemp;
 	signed int TemperatureR;
@@ -664,8 +722,18 @@ struct mtk_battery {
 
 /*custom related*/
 	int battery_id;
-	unsigned int idme_battery_id[2];
-	const char *bat_name[2];
+	uint32_t idme_battery_id;
+	uint32_t idme_battery_id_table[4];
+	const char *idme_battery_name[4];
+	uint32_t num_of_battery;
+
+	bool use_adc_id;
+	uint32_t adc_channel;
+	uint32_t adc_battery_id;
+	int adc_id_threshold_table[4];
+	const char *cell_id_name[4];
+	uint32_t num_of_cell;
+
 	int fake_rtc_soc;
 
 /*simulator log*/
@@ -833,6 +901,7 @@ enum {
 };
 
 extern struct mtk_battery gm;
+extern struct fuel_gauge_log_data fg_log_data;
 extern struct battery_data battery_main;
 extern struct fuel_gauge_custom_data fg_cust_data;
 extern struct fuel_gauge_table_custom_data fg_table_cust_data;
@@ -943,5 +1012,9 @@ extern struct BAT_EC_Struct *get_ec(void);
 int en_intr_VBATON_UNDET(int en);
 int reg_VBATON_UNDET(void (*callback)(void));
 
+extern int IMM_GetOneChannelValue_Cali(int Channel, int *voltage);
+
+/* Report uEvent for bugreport */
+extern int battery_report_uevent(void);
 
 #endif /* __MTK_BATTERY_INTF_H__ */

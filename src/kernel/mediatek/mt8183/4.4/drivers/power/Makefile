@@ -1,5 +1,14 @@
 subdir-ccflags-$(CONFIG_POWER_SUPPLY_DEBUG) := -DDEBUG
 
+MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
+subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include
+subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
+subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include/mt-plat
+subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/pmic/include
+subdir-ccflags-y += -Werror -I$(srctree)/drivers/power/mediatek/charger
+subdir-ccflags-y += -Werror -I$(srctree)/drivers/power/mediatek/misc
+subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/usb_c/tcpc/inc
+
 power_supply-y				:= power_supply_core.o
 power_supply-$(CONFIG_SYSFS)		+= power_supply_sysfs.o
 power_supply-$(CONFIG_LEDS_TRIGGERS)	+= power_supply_leds.o
@@ -72,3 +81,5 @@ obj-$(CONFIG_CHARGER_TPS65217)	+= tps65217_charger.o
 obj-$(CONFIG_POWER_RESET)	+= reset/
 obj-$(CONFIG_AXP288_FUEL_GAUGE) += axp288_fuel_gauge.o
 obj-$(CONFIG_AXP288_CHARGER)	+= axp288_charger.o
+
+obj-$(CONFIG_CHARGER_IDT_P9415)	+= p9415.o

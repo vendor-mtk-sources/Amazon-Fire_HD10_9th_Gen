@@ -37,6 +37,7 @@
 #include <linux/wait.h>		/* For wait queue*/
 #include <linux/sched.h>	/* For wait queue*/
 #include <linux/kthread.h>	/* For Kthread_run */
+#include <linux/kobject.h>
 #include <linux/platform_device.h>	/* platform device */
 #include <linux/time.h>
 
@@ -69,6 +70,7 @@
 
 #include <mach/mtk_battery_property.h>
 #include <mach/mtk_battery_table.h>
+#include <mtk_charger_intf.h>
 #else
 #include <string.h>
 
@@ -90,6 +92,8 @@
 /* global variable */
 /* ============================================================ */
 struct mtk_battery gm;
+struct fuel_gauge_log_data fg_log_data;
+struct platform_device *batt_platform_dev;
 static int min_battery_temp;
 
 /* ============================================================ */
@@ -362,21 +366,44 @@ void fgauge_get_profile_id(void)
 #elif defined(CONFIG_IDME)
 void fgauge_get_profile_id(void)
 {
-	unsigned int idme_battery_id = idme_get_battery_info(31, 4);
-	static unsigned int init_done;
+	int ret = 0;
+	uint32_t id;
 
-	if (init_done)
-		return;
-	bm_err("idme_battery_id:0x%x\n", idme_battery_id);
-	if (idme_battery_id == gm.idme_battery_id[0]) {
-		gm.battery_id = 0;
-	} else if (idme_battery_id == gm.idme_battery_id[1]) {
-		gm.battery_id = 1;
+	gm.idme_battery_id = idme_get_battery_info(31, 4);
+
+	if (gm.use_adc_id) {
+		ret = IMM_GetOneChannelValue_Cali(gm.adc_channel,
+				&gm.adc_battery_id);
+		if (ret != 0) {
+			bm_err("Read battery cell ID fail\n");
+			gm.battery_id = 0;
+		} else {
+			/* Normalize to mV */
+			gm.adc_battery_id = (gm.adc_battery_id + 500)/1000;
+			bm_err("Battery Cell ID:%d", gm.adc_battery_id);
+
+			for (id = 0; id < (gm.num_of_cell-1); id++) {
+				if (gm.adc_battery_id < gm.adc_id_threshold_table[id]) {
+					gm.battery_id = id;
+					break;
+				}
+			}
+			if (id >= (gm.num_of_cell-1))
+				gm.battery_id = gm.num_of_cell-1;
+		}
 	} else {
-		bm_err("IDME battery id is not valid, use default table\n");
-		gm.battery_id = 0;
+		bm_err("idme_battery_id:0x%x\n", gm.idme_battery_id);
+		for (id = 0; id < gm.num_of_battery; id++) {
+			if (gm.idme_battery_id == gm.idme_battery_id_table[id]) {
+				gm.battery_id = id;
+				break;
+			}
+		}
+		if (id >= gm.num_of_battery) {
+			bm_err("IDME battery id is not valid, use default table\n");
+			gm.battery_id = 0;
+		}
 	}
-	init_done = 1;
 	bm_err("battery_id:%d\n", gm.battery_id);
 }
 #else
@@ -823,8 +850,11 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 	unsigned int val_4;
 	int ret4;
 #endif
+	uint32_t table_index;
+	char node_buffer[19];
+	int node_q_max_data[TOTAL_BATTERY_NUMBER];
+	int num_data;
 
-	fgauge_get_profile_id();
 	bat_id = gm.battery_id;
 
 	bm_err("%s\n", __func__);
@@ -1339,6 +1369,48 @@ void fg_custom_init_from_dts(struct platform_device *dev)
 		default:
 			break;
 		}
+	}
+
+	/* Q_MAX_T0 ~ Q_MAX_T9 */
+	for (table_index = 0; table_index < MAX_TABLE; table_index++) {
+		memset(node_buffer, 0, sizeof(node_buffer));
+		ret = scnprintf(node_buffer, sizeof(node_buffer),
+				"Q_MAX_T%d", table_index);
+		if (ret <= 0)
+			break;
+
+		num_data = of_property_count_u32_elems(np, node_buffer);
+		if (num_data <= 0)
+			break;
+		if (num_data > TOTAL_BATTERY_NUMBER)
+			num_data = TOTAL_BATTERY_NUMBER;
+
+		memset(node_q_max_data, 0, sizeof(node_q_max_data));
+		of_property_read_u32_array(np, node_buffer,
+			node_q_max_data, num_data);
+		fg_table_cust_data.fg_profile[table_index].q_max =
+			node_q_max_data[bat_id];
+	}
+
+	/* Q_MAX_H_CURRENT_T0 ~ Q_MAX_H_CURRENT_T9 */
+	for (table_index = 0; table_index < MAX_TABLE; table_index++) {
+		memset(node_buffer, 0, sizeof(node_buffer));
+		ret = scnprintf(node_buffer, sizeof(node_buffer),
+				"Q_MAX_H_CURRENT_T%d", table_index);
+		if (ret <= 0)
+			break;
+
+		num_data = of_property_count_u32_elems(np, node_buffer);
+		if (num_data <= 0)
+			break;
+		if (num_data > TOTAL_BATTERY_NUMBER)
+			num_data = TOTAL_BATTERY_NUMBER;
+
+		memset(node_q_max_data, 0, sizeof(node_q_max_data));
+		of_property_read_u32_array(np, node_buffer,
+			node_q_max_data, num_data);
+		fg_table_cust_data.fg_profile[table_index].q_max_h_current =
+			node_q_max_data[bat_id];
 	}
 
 	gm.enable_zero_percent_shutdown =
@@ -2293,6 +2365,102 @@ void fg_drv_update_hw_status(void)
 
 }
 
+#define ENV_SIZE 30
+int battery_report_uevent(void)
+{
+	struct platform_device *dev = batt_platform_dev;
+	struct fuel_gauge_log_data *d = &fg_log_data;
+	struct charger_consumer *charger_consumer = gm.pbat_consumer;
+	struct charger_manager *cm;
+	int i = 0, vbat_mv, ibat_ma, temp, vbus_mv;
+	bool is_charging = 0;
+	char capacity_str[ENV_SIZE] = {0};
+	char ui_soc_str[ENV_SIZE] = {0};
+	char status_str[ENV_SIZE] = {0};
+	char temperature_str[ENV_SIZE] = {0};
+	char vbat_str[ENV_SIZE] = {0};
+	char ibat_str[ENV_SIZE] = {0};
+	char vbus_str[ENV_SIZE] = {0};
+	char chr_type_str[ENV_SIZE] = {0};
+	char iusb_lim_str[ENV_SIZE] = {0};
+	char ibat_lim_str[ENV_SIZE] = {0};
+	char gm30_soc_str[ENV_SIZE] = {0};
+	char c_soc_str[ENV_SIZE] = {0};
+	char v_soc_str[ENV_SIZE] = {0};
+	char vc_diff_str[ENV_SIZE] = {0};
+	char vc_mode_str[ENV_SIZE] = {0};
+	char quse_str[ENV_SIZE] = {0};
+	char *envp[] = {
+		capacity_str,
+		status_str,
+		temperature_str,
+		vbat_str,
+		ibat_str,
+		vbus_str,
+		chr_type_str,
+		iusb_lim_str,
+		ibat_lim_str,
+		ui_soc_str,
+		gm30_soc_str,
+		c_soc_str,
+		v_soc_str,
+		vc_diff_str,
+		vc_mode_str,
+		quse_str,
+		NULL
+	};
+
+	if (!dev) {
+		bm_err("%s: platform_device is NULL\n", __func__);
+		return -1;
+	}
+
+	if ((!IS_ERR_OR_NULL(charger_consumer)) &&
+		(!IS_ERR_OR_NULL(charger_consumer->cm))) {
+		cm = charger_consumer->cm;
+	} else {
+		bm_err("charger manager is not initialized\n");
+		return -1;
+	}
+
+	vbat_mv = battery_get_bat_voltage();
+	temp = battery_get_bat_temperature();
+	vbus_mv = battery_get_vbus();
+	is_charging = gauge_get_current(&ibat_ma);
+	ibat_ma /= 10;
+	if (is_charging == false)
+		ibat_ma = 0 - ibat_ma;
+
+	snprintf(capacity_str, ENV_SIZE, "BATTERY_LEVEL=%d",
+		battery_main.BAT_CAPACITY);
+	snprintf(status_str, ENV_SIZE, "BATTERY_STATUS=%d",
+		battery_main.BAT_STATUS);
+	snprintf(iusb_lim_str, ENV_SIZE, "BATTERY_IUSB_LIM=%d",
+		cm->chg1_data.input_current_limit/1000);
+	snprintf(ibat_lim_str, ENV_SIZE, "BATTERY_IBAT_LIM=%d",
+		cm->chg1_data.charging_current_limit/1000);
+	snprintf(ui_soc_str, ENV_SIZE, "BATTERY_UI_SOC=%d", d->gm30_ui_soc);
+	snprintf(temperature_str, ENV_SIZE, "BATTERY_TEMP=%d", temp);
+	snprintf(vbat_str, ENV_SIZE, "BATTERY_VBAT=%d", vbat_mv);
+	snprintf(ibat_str, ENV_SIZE, "BATTERY_IBAT=%d", ibat_ma);
+	snprintf(vbus_str, ENV_SIZE, "BATTERY_VBUS=%d", vbus_mv);
+	snprintf(chr_type_str, ENV_SIZE, "BATTERY_CHR_TYPE=%d", cm->chr_type);
+	snprintf(gm30_soc_str, ENV_SIZE, "BATTERY_SOC=%d", d->gm30_soc);
+	snprintf(c_soc_str, ENV_SIZE, "BATTERY_C_SOC=%d", d->gm30_fg_c_soc);
+	snprintf(v_soc_str, ENV_SIZE, "BATTERY_V_SOC=%d", d->gm30_fg_v_soc);
+	snprintf(vc_diff_str, ENV_SIZE, "BATTERY_VC_DIFF=%d", d->gm30_vc_diff);
+	snprintf(vc_mode_str, ENV_SIZE, "BATTERY_VC_MODE=%d", d->gm30_vc_mode);
+	snprintf(quse_str, ENV_SIZE, "BATTERY_QUSE=%d",
+		d->gm30_quse_wo_lf_tb1/10);
+
+	kobject_uevent_env(&dev->dev.kobj, KOBJ_CHANGE, envp);
+	bm_err("%s:", __func__);
+	while (envp[i] != NULL)
+		bm_err(" %s", envp[i++]);
+	bm_err("\n");
+
+	return 0;
+}
 
 int battery_update_routine(void *x)
 {
@@ -2377,6 +2545,35 @@ void fg_daemon_send_data(
 				prcv->idx);
 		}
 		break;
+
+	case FG_LOG_DATA:
+		{
+			char *ptr;
+
+			if (sizeof(struct fuel_gauge_log_data)
+				!= prcv->total_size) {
+				bm_err("size is different %d %d\n",
+				(int)sizeof(
+				struct fuel_gauge_log_data),
+				prcv->total_size);
+			}
+
+			ptr = (char *)&fg_log_data;
+			memcpy(&ptr[prcv->idx],
+				prcv->input,
+				prcv->size);
+
+			bm_debug(
+				"FG_DATA_TYPE_TABLE type:%d size:%d %d idx:%d\n",
+				prcv->type,
+				prcv->total_size,
+				prcv->size,
+				prcv->idx);
+
+			bm_info("FG_LOG_DATA\n");
+		}
+		break;
+
 	default:
 		bm_err("bad %s 0x%x\n",
 			__func__, prcv->type);
@@ -2627,78 +2824,6 @@ void fg_daemon_comm_INT_data(char *rcv, char *ret)
 		pret->type, pret->input, pret->output, pret->status);
 
 
-}
-
-int extract_data_from_str(const char * const str_src,
-	const char *start_token,
-	const char *end_token)
-{
-	char *str_start, *str_end, *str_data;
-	int value = 0, ret;
-
-	str_start = strstr(str_src, start_token);
-	if (str_start)
-		str_end = strstr(str_start, end_token);
-
-	if ((str_start == NULL) || (str_end == NULL))
-		return 0;
-
-	str_data = kstrndup(str_start + strlen(start_token),
-			str_end - str_start - strlen(start_token),
-			GFP_KERNEL);
-	if (str_data) {
-		ret = kstrtoint(str_data, 0, &value);
-		kfree(str_data);
-		str_data = NULL;
-	}
-	return value;
-}
-
-void parsing_soc(const char * const str_src)
-{
-	char *str_data;
-	char *vboot_v, *vboot_c;
-
-	if (strstr(str_src, "{FGADC}")) {
-		gm.gm_soc = extract_data_from_str(str_src, "soc:",
-				" fg_c_soc");
-		gm.fg_c_soc = extract_data_from_str(str_src, "fg_c_soc:",
-				" fg_v_soc");
-		gm.fg_v_soc = extract_data_from_str(str_src, "fg_v_soc:",
-				" ui_soc");
-		gm.vc_mode = extract_data_from_str(str_src, "vc_mode ",
-				" VBAT");
-		if (gm.dodinit < 1) {
-			gm.d0_c = extract_data_from_str(str_src, "D0_C ",
-					" D0_V");
-			gm.d0_v = extract_data_from_str(str_src, "D0_V ",
-					" CAR[");
-			gm.vbat_lk = extract_data_from_str(str_src, "VBAT ",
-					" T:[");
-
-			gm.dodinit = extract_data_from_str(str_src,
-				"dod_init[", "]");
-			vboot_v = strstr(str_src, "vboot");
-			if (vboot_v) {
-				vboot_c = vboot_v + strlen("vboot:34000 ");
-				str_data = kstrndup(vboot_v + strlen("vboot:"),
-						strlen("34000"), GFP_KERNEL);
-				gm.vboot_v = -1;
-				if (str_data) {
-					kstrtoint(str_data, 0, &(gm.vboot_v));
-					kfree(str_data);
-					str_data = NULL;
-				}
-				str_data = kstrndup(vboot_c,
-						strlen("34000"), GFP_KERNEL);
-				gm.vboot_c = -1;
-				if (str_data) {
-					kstrtoint(str_data, 0, &(gm.vboot_c));
-					kfree(str_data);
-				}
-			}
-		}
-	}
 }
 
 void bmd_ctrl_cmd_from_user(void *nl_data, struct fgd_nl_msg_t *ret_msg)
@@ -3875,16 +4000,8 @@ void bmd_ctrl_cmd_from_user(void *nl_data, struct fgd_nl_msg_t *ret_msg)
 
 	case FG_DAEMON_CMD_PRINT_LOG:
 	{
-		unsigned int data_len = msg->fgd_data_len;
-
 		fg_cmd_check(msg);
 
-		if (data_len > FGD_NL_MSG_MAX_LEN)
-			data_len = FGD_NL_MSG_MAX_LEN;
-		if (msg->fgd_data[data_len - 1] != 0)
-			msg->fgd_data[data_len - 1] = 0;
-
-		parsing_soc(&msg->fgd_data[0]);
 		bm_err("%s", &msg->fgd_data[0]);
 	}
 	break;
@@ -4028,7 +4145,76 @@ void bmd_ctrl_cmd_from_user(void *nl_data, struct fgd_nl_msg_t *ret_msg)
 /* ============================================================ */
 /* sub function/features */
 /* ============================================================ */
+void custom_battery_id_from_dts(struct device_node *np)
+{
+	uint32_t val, idx, id;
+	char dts_str[23];
 
+	gm.use_adc_id = of_property_read_bool(np, "use_adc_id");
+
+	gm.num_of_battery = 0;
+	memset(dts_str, 0, ARRAY_SIZE(dts_str));
+	for (id = 0; id < ARRAY_SIZE(gm.idme_battery_id_table); id++) {
+		scnprintf(dts_str, ARRAY_SIZE(dts_str), "battery%d_profile_id", id);
+		if (!of_property_read_u32(np, dts_str, &val)) {
+			gm.idme_battery_id_table[id] = (uint32_t)val;
+
+			scnprintf(dts_str, ARRAY_SIZE(dts_str), "battery%d_profile_name", id);
+			if (!of_property_read_string(np, dts_str,
+				&gm.idme_battery_name[id]))
+				gm.num_of_battery++;
+			else
+				gm.idme_battery_name[id] = NULL;
+		} else {
+			gm.idme_battery_id_table[id] = 0;
+		}
+	}
+
+	if (gm.use_adc_id) {
+		if (of_property_read_u32(np, "adc_channel", &gm.adc_channel))
+			gm.adc_channel = BATTERY_ID_CHANNEL_NUM;
+
+		idx = 0;
+		while (!of_property_read_u32_index(np, "bat_id_volt_thres",
+				idx, &val)) {
+			if (idx >= ARRAY_SIZE(gm.adc_id_threshold_table)-1)
+				break;
+
+			gm.adc_id_threshold_table[idx++] = (int)val;
+
+			if (val < 0)
+				break;
+		}
+
+		gm.num_of_cell = of_property_count_strings(np, "cell_id_name");
+		if (unlikely(gm.num_of_cell < 0)) {
+			bm_err("Cannot parse cell_id_name\n");
+			WARN_ON(1);
+		} else {
+			if (gm.num_of_cell > ARRAY_SIZE(gm.adc_id_threshold_table))
+				gm.num_of_cell = ARRAY_SIZE(gm.adc_id_threshold_table);
+			if (of_property_read_string_array(np, "cell_id_name",
+					gm.cell_id_name, gm.num_of_cell) < 0) {
+				bm_err("Cannot find cell_id_name\n");
+				WARN_ON(1);
+			}
+		}
+
+		for (id = 0; id < gm.num_of_cell; id++) {
+			scnprintf(dts_str, ARRAY_SIZE(dts_str), "battery%d_profile_name", id);
+			bm_err("%s=%s\n", dts_str, gm.cell_id_name[id]);
+		}
+	} else {
+		for (id = 0; id < gm.num_of_battery; id++) {
+			scnprintf(dts_str, ARRAY_SIZE(dts_str), "battery%d_profile_id", id);
+			if (gm.idme_battery_id_table[id] > 0) {
+				bm_err("%s=0x%x\n", dts_str, gm.idme_battery_id_table[id]);
+				scnprintf(dts_str, ARRAY_SIZE(dts_str), "battery%d_profile_name", id);
+				bm_err("%s=%s\n", dts_str, gm.idme_battery_name[id]);
+			}
+		}
+	}
+}
 
 /* ============================================================ */
 /* init */
@@ -4036,8 +4222,8 @@ void bmd_ctrl_cmd_from_user(void *nl_data, struct fgd_nl_msg_t *ret_msg)
 void mtk_battery_init(struct platform_device *dev)
 {
 	struct device_node *np = dev->dev.of_node;
-	unsigned int val;
 
+	batt_platform_dev = dev;
 	gm.ui_soc = -1;
 	gm.log_level = BM_DAEMON_DEFAULT_LOG_LEVEL;
 	gm.d_log_level = BM_DAEMON_DEFAULT_LOG_LEVEL;
@@ -4077,30 +4263,7 @@ void mtk_battery_init(struct platform_device *dev)
 	} else
 		bm_err("gauge_dev is NULL\n");
 
-	if (!of_property_read_u32(np, "battery0_profile_id", &val)) {
-		gm.idme_battery_id[0] = (unsigned int)val;
-		bm_err("battery0_profile_id=0x%x\n", gm.idme_battery_id[0]);
-
-		if (!of_property_read_string(np, "battery0_profile_name",
-			&gm.bat_name[0]))
-			bm_err("battery0_profile_name=%s\n", gm.bat_name[0]);
-		else
-			gm.bat_name[0] = NULL;
-	} else {
-		gm.idme_battery_id[0] = 0;
-	}
-	if (!of_property_read_u32(np, "battery1_profile_id", &val)) {
-		gm.idme_battery_id[1] = (unsigned int)val;
-		bm_err("battery1_profile_id=0x%x\n", gm.idme_battery_id[1]);
-
-		if (!of_property_read_string(np, "battery1_profile_name",
-			&gm.bat_name[1]))
-			bm_err("battery1_profile_name=%s\n", gm.bat_name[1]);
-		else
-			gm.bat_name[1] = NULL;
-	} else {
-		gm.idme_battery_id[1] = 0;
-	}
+	custom_battery_id_from_dts(np);
 
 	fg_custom_init_from_header();
 #ifdef CONFIG_OF

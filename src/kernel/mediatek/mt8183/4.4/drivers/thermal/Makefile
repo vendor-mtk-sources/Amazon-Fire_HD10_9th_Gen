@@ -51,3 +51,4 @@ obj-$(CONFIG_ST_THERMAL)	+= st/
 obj-$(CONFIG_TEGRA_SOCTHERM)	+= tegra_soctherm.o
 obj-$(CONFIG_HISI_THERMAL)     += hisi_thermal.o
 obj-$(CONFIG_VIRTUAL_SENSOR_THERMAL)    += virtual_sensor_tablet_thermal.o
+obj-$(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)    += virtual_sensor_tablet/

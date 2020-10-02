@@ -129,7 +129,7 @@ mtk_chr_get_tchr(int *min_tchr, int *max_tchr)
  * If main charger is not PMIC, it is necessary to create another TZ for main charger
  * in both PEP30 and dual charging cases.
  */
-static int mtktscharger_get_hw_temp(void)
+int mtktscharger_get_hw_temp(void)
 {
 	int charger_idx = MAIN_CHARGER;
 	int tmax = 0, tmin = 0;
@@ -161,7 +161,7 @@ static int mtktscharger_get_hw_temp(void)
 	return t;
 }
 #else
-static int mtktscharger_get_hw_temp(void)
+int mtktscharger_get_hw_temp(void)
 {
 	int ret = -1;
 	int min_temp = 0, max_temp = 0;

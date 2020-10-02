@@ -203,6 +203,12 @@ struct charger_custom_data {
 	int apple_2_1a_charger_current;
 	int ta_ac_charger_current;
 	int pd_charger_current;
+	int wpc_5w_charger_current;
+	int wpc_5w_charger_input_current;
+	int wpc_10w_charger_current;
+	int wpc_10w_charger_input_current;
+	int wpc_15w_charger_current;
+	int wpc_15w_charger_input_current;
 
 	/* sw jeita */
 	int jeita_temp_above_t4_cv_voltage;
@@ -311,6 +317,7 @@ struct charger_custom_data {
 struct charger_data {
 	int force_charging_current;
 	int thermal_input_current_limit;
+	int thermal_input_power_limit;
 	int thermal_charging_current_limit;
 	int input_current_limit;
 	int charging_current_limit;
@@ -332,6 +339,7 @@ struct power_detection_data {
 	int adapter_12w_iusb_lim;
 	int aicl_trigger_iusb;
 	int aicl_trigger_ichg;
+	int mivr_detect;
 };
 
 struct charger_manager {
@@ -392,6 +400,8 @@ struct charger_manager {
 	struct charger_custom_data data;
 
 	bool enable_sw_safety_timer;
+	bool dcap_support;
+	bool dcap_enable;
 
 	/* High voltage charging */
 	bool enable_hv_charging;

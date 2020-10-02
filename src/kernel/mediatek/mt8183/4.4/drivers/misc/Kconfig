@@ -536,6 +536,12 @@ config MDUMP_COMPRESS
 
 	  If unsure, say N.
 
+config MDUMP_BUFFER_ADDRESS
+	hex "Mdump alway reserved buffer address"
+	default 0x602C0000
+	help
+	  This buffer store reboot reason, pl/lk log info
+
 config VEXPRESS_SYSCFG
 	bool "Versatile Express System Configuration driver"
 	depends on VEXPRESS_CONFIG
@@ -597,4 +603,5 @@ source "drivers/misc/genwqe/Kconfig"
 source "drivers/misc/echo/Kconfig"
 source "drivers/misc/cxl/Kconfig"
 source "drivers/misc/mediatek/Kconfig"
+source "drivers/misc/fusb/Kconfig"
 endmenu

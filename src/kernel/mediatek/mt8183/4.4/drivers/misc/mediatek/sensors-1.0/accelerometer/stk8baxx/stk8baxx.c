@@ -3328,7 +3328,9 @@ static int stk8baxx_i2c_probe(struct i2c_client *client, const struct i2c_device
 	mutex_init(&stk->reg_lock);
 	stk_data_initialize(stk);
 
-	if (stk_get_pid(stk))
+	error = stk_get_pid(stk);
+
+	if (error)
 		goto err_mutex_destory;
 
 	STK_ACC_LOG("PID 0x%x\n", stk->pid);
@@ -3353,7 +3355,9 @@ static int stk8baxx_i2c_probe(struct i2c_client *client, const struct i2c_device
 
 #endif /* INTERRUPT_MODE */
 
-	if (stk_reg_init(stk)) {
+	error = stk_reg_init(stk);
+
+	if (error) {
 		STK_ACC_ERR("stk8baxx initialization failed");
 		goto exit_stk_init_error;
 	}

@@ -489,9 +489,10 @@ void fps_update_statistic_debug(unsigned long long *time,
 				update_layer[layer_idx] = 1;
 			}
 		}
-		/*store old value*/
-		memcpy(&(old_ovlInfo[layer_pos]),
-			&(ovlInfo[layer_pos]), layer_num * sizeof(struct OVL_BASIC_STRUCT));
+		if (layer_pos < TOTAL_OVL_LAYER_NUM)
+			/*store old value*/
+			memcpy(&(old_ovlInfo[layer_pos]),
+				&(ovlInfo[layer_pos]), layer_num * sizeof(struct OVL_BASIC_STRUCT));
 	}
 
 	if (b_layer_changed)

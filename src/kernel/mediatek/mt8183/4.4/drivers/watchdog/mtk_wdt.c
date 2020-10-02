@@ -518,7 +518,12 @@ static int mtk_wdt_probe(struct platform_device *pdev)
 
 	watchdog_set_drvdata(&mtk_wdt->wdt_dev, mtk_wdt);
 
+#ifdef CONFIG_AMAZON_BOOTUP_KEEP_WATCHDOG
+	mtk_wdt_start(&mtk_wdt->wdt_dev);
+	mtk_wdt_ping(&mtk_wdt->wdt_dev);
+#else
 	mtk_wdt_stop(&mtk_wdt->wdt_dev);
+#endif /* CONFIG_AMAZON_BOOTUP_KEEP_WATCHDOG */
 
 	err = watchdog_register_device(&mtk_wdt->wdt_dev);
 	if (unlikely(err))

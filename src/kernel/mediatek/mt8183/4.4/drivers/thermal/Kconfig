@@ -433,4 +433,5 @@ config QCOM_SPMI_TEMP_ALARM
 	  real time die temperature if an ADC is present or an estimate of the
 	  temperature based upon the over temperature stage value.
 
+source "drivers/thermal/virtual_sensor_tablet/Kconfig"
 endif

@@ -215,9 +215,9 @@ static void _init_loading_ud_table(void)
 
 unsigned long ged_query_info( GED_INFO eType)
 {
-	unsigned int gpu_loading;
-	unsigned int gpu_block;
-	unsigned int gpu_idle;
+	unsigned int gpu_loading = 0;
+	unsigned int gpu_block = 0;
+	unsigned int gpu_idle = 0;
 
 	switch (eType) {
 		case GED_LOADING:
@@ -333,7 +333,7 @@ void ged_dvfs_get_bw_record(unsigned int *pui32MaxBW, unsigned int *pui32AvgBW, 
 	* If Frame-based is applicable, use previous records
 	* (up to MAX_BW_PROFILE-1) as base line BW
 	*/
-	if (bFB) {
+	if (bFB && g_bw_tail >= 0) {
 		gsBWprofile[g_bw_tail].ui32MaxBW = ui32MaxBW;
 		gsBWprofile[g_bw_tail].ui32AvgBW = ui32AvgBW;
 

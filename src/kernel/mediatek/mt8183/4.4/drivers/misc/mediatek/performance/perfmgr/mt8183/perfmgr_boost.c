@@ -25,7 +25,7 @@
 /*--------------DEFAULT SETTING-------------------*/
 
 #define TARGET_CORE (3)
-#define TARGET_FREQ (1183000)
+#define TARGET_FREQ (1989000)
 #define CLUSTER_NUM (2)
 
 /*-----------------------------------------------*/
@@ -56,7 +56,7 @@ void perfmgr_boost(int enable, int core, int freq)
 		core_to_set[1].max = -1;
 		freq_to_set[0].min = freq;
 		freq_to_set[0].max = -1;
-		freq_to_set[1].min = -1;
+		freq_to_set[1].min = freq;
 		freq_to_set[1].max = -1;
 	} else {
 		core_to_set[0].min = -1;

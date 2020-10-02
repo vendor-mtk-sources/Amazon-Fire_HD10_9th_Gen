@@ -296,7 +296,7 @@ static ssize_t mtk_auxadc_store(struct device *dev,
 {
 	ptrdiff_t cmd;
 	int ret;
-	long int val;
+	long int val = 0;
 
 	cmd = attr - mtk_auxadc_attrs;
 	switch (cmd) {

@@ -1120,7 +1120,7 @@ static signed int _pwrap_init_reg_clock(unsigned int regck_sel)
 
 static int _pwrap_wacs2_write_test(int pmic_no)
 {
-	unsigned int rdata;
+	unsigned int rdata = 0;
 
 	if (pmic_no == 0) {
 		pwrap_write_nochk(PMIC_DEW_WRITE_TEST_ADDR, 0xa55a);

@@ -22,7 +22,7 @@ static inline void mdump_mark_reboot_reason(int mode) { }
 #define COMP_SIGNATURE_SIZE  16
 #define COMP_HEAD_SIGNATURE  "UFBLCOMPDUMPSTA"
 
-#define COMPRESS_START_ADDRESS 0x60300000
+#define COMPRESS_START_ADDRESS (CONFIG_MDUMP_BUFFER_ADDRESS + 0x40000)
 
 struct compress_file_header {
 	char header_signature[COMP_SIGNATURE_SIZE];
@@ -32,7 +32,6 @@ struct compress_file_header {
 
 #endif /* CONFIG_MDUMP_COMPRESS */
 
-#define CONFIG_MDUMP_BUFFER_ADDRESS  0x602C0000
 #define CONFIG_MDUMP_MESSAGE_SIZE    0x1C000
 
 struct mdump_buffer {

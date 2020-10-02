@@ -124,7 +124,7 @@ static ssize_t mt_pid_write(struct file *filp, const char *ubuf,
 	   size_t cnt, loff_t *data)
 {
 	char buf[10];
-	unsigned long val;
+	unsigned long val = 0;
 	int ret;
 	struct task_struct *tsk;
 

@@ -916,7 +916,6 @@ extern LCM_DSI_MODE_CON lcm_dsi_mode;
 extern int display_bias_enable(void);
 extern int display_bias_disable(void);
 extern int display_bias_regulator_init(void);
-
-
+extern int display_bias_enable_vol(int pos_uv, int neg_uv);
 
 #endif /* __LCM_DRV_H__ */

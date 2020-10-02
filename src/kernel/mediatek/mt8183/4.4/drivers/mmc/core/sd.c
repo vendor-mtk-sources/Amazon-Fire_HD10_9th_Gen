@@ -922,7 +922,7 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 {
 	struct mmc_card *card;
 	int err;
-	u32 cid[4];
+	u32 cid[4] = {0};
 	u32 rocr = 0;
 
 	BUG_ON(!host);

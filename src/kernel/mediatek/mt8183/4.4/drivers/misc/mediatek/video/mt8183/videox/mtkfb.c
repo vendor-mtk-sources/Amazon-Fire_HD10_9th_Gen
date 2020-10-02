@@ -328,6 +328,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 	case FB_BLANK_UNBLANK:
 	case FB_BLANK_NORMAL:
 		DISPDBG("mtkfb_blank mtkfb_late_resume\n");
+		pr_notice("[METRICS_DISP] mtkfb_blank UNBLANK\n");
 		if (bypass_blank) {
 			DDPPR_ERR("FB_BLANK_UNBLANK bypass_blank %d\n", bypass_blank);
 			break;
@@ -343,6 +344,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 		break;
 	case FB_BLANK_POWERDOWN:
 		DISPDBG("mtkfb_blank mtkfb_early_suspend\n");
+		pr_notice("[METRICS_DISP] mtkfb_blank POWERDOWN\n");
 		if (bypass_blank) {
 			DDPPR_ERR("FB_BLANK_POWERDOWN bypass_blank %d\n", bypass_blank);
 			break;
@@ -358,6 +360,7 @@ static int mtkfb_blank(int blank_mode, struct fb_info *info)
 		return -EINVAL;
 	}
 
+	pr_notice("[METRICS_DISP] mtkfb_blank end\n");
 	return 0;
 }
 #endif

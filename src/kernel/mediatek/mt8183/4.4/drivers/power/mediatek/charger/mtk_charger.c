@@ -69,6 +69,7 @@
 #include <mt-plat/charger_type.h>
 #include <mt-plat/mtk_battery.h>
 #include <mt-plat/mtk_boot.h>
+#include <mt-plat/upmu_common.h>
 #include <musb_core.h>
 #include <pmic.h>
 #include <mtk_gauge_time_service.h>
@@ -97,6 +98,13 @@ bool is_power_path_supported(void)
 		return true;
 
 	return false;
+}
+
+bool is_mtk_charger_init_done(void)
+{
+	if (pinfo == NULL || pinfo->init_done != true)
+		return false;
+	return true;
 }
 
 bool is_disable_charger(void)
@@ -157,6 +165,14 @@ int mtk_chr_is_charger_exist(unsigned char *exist)
 	else
 		*exist = 1;
 	return 0;
+}
+
+bool mtk_chr_is_dcap_enable(void)
+{
+	if (pinfo != NULL)
+		return pinfo->dcap_enable;
+
+	return false;
 }
 
 /*=============== fix me==================*/
@@ -394,6 +410,22 @@ int charger_manager_enable_charging(struct charger_consumer *consumer,
 	ret = _charger_manager_enable_charging(consumer, idx, en);
 	mutex_unlock(&info->charger_lock);
 	return ret;
+}
+
+int charger_manager_enable_dcap(struct charger_consumer *consumer,
+		int idx, bool en)
+{
+	struct charger_manager *info = consumer->cm;
+
+	if (info != NULL) {
+		if (info->dcap_support) {
+			pmic_charger_auto_on(!en);
+			info->dcap_enable = true;
+		}
+		chr_err("%s:dcap_enable=%d\n", __func__, info->dcap_enable);
+	}
+
+	return 0;
 }
 
 int charger_manager_set_input_current_limit(struct charger_consumer *consumer,
@@ -775,14 +807,19 @@ int charger_enable_vbus_ovp(struct charger_manager *pinfo, bool enable)
 
 bool is_typec_adapter(struct charger_manager *info)
 {
+	/* For adapter power detection */
+	if (info->power_detection.en &&
+		(tcpm_inquire_typec_remote_rp_curr(info->tcpc) == 3000 ||
+		tcpm_inquire_typec_remote_rp_curr(info->tcpc) == 1500))
+		return true;
+
 	if (info->pd_type == PD_CONNECT_TYPEC_ONLY_SNK &&
 			tcpm_inquire_typec_remote_rp_curr(info->tcpc) != 500 &&
 			info->chr_type != STANDARD_HOST &&
 			info->chr_type != CHARGING_HOST &&
 			mtk_pe20_get_is_connect(info) == false &&
 			mtk_pe_get_is_connect(info) == false &&
-			info->enable_type_c == true &&
-			info->power_detection.en == false)
+			info->enable_type_c == true)
 		return true;
 
 	return false;
@@ -1302,9 +1339,15 @@ static void charger_update_data(struct charger_manager *info)
 static bool mtk_chg_check_vbus(struct charger_manager *info)
 {
 	int vchr = 0;
+	bool wpc_online = false;
+	struct charger_device *chg_dev = NULL;
+
+	chg_dev = get_charger_by_name("wireless_chg");
+	if (chg_dev)
+		wireless_charger_dev_get_online(chg_dev, &wpc_online);
 
 	vchr = pmic_get_vbus() * 1000; /* uV */
-	if (vchr > info->data.max_charger_voltage) {
+	if (vchr > info->data.max_charger_voltage && !wpc_online) {
 		chr_err("%s: vbus(%d mV) > %d mV\n", __func__, vchr / 1000,
 			info->data.max_charger_voltage / 1000);
 		return false;
@@ -1317,11 +1360,17 @@ static void mtk_battery_notify_VCharger_check(struct charger_manager *info)
 {
 #if defined(BATTERY_NOTIFY_CASE_0001_VCHARGER)
 	int vchr = 0;
+	bool wpc_online = false;
+	struct charger_device *chg_dev = NULL;
+
+	chg_dev = get_charger_by_name("wireless_chg");
+	if (chg_dev)
+		wireless_charger_dev_get_online(chg_dev, &wpc_online);
 
 	vchr = pmic_get_vbus() * 1000; /* uV */
 	if (vchr < info->data.max_charger_voltage)
 		info->notify_code &= ~(0x0001);
-	else {
+	else if (!wpc_online) {
 		info->notify_code |= 0x0001;
 		chr_err("[BATTERY] charger_vol(%d mV) > %d mV\n",
 			vchr / 1000, info->data.max_charger_voltage / 1000);
@@ -1694,6 +1743,9 @@ static int adapter_power_detection_parse_dt(struct charger_manager *info,
 	__parse_node(np, "aicl_trigger_iusb", &data->aicl_trigger_iusb);
 	__parse_node(np, "aicl_trigger_ichg", &data->aicl_trigger_ichg);
 
+	data->mivr_detect = -1;
+	__parse_node(np, "mivr_detect", &data->mivr_detect);
+
 	pr_info("%s: aicl_min[%d %d] iusb_lim[%d %d %d] trigger[%d %d]\n",
 		__func__,
 		data->adapter_9w_aicl_min, data->adapter_12w_aicl_min,
@@ -1757,6 +1809,7 @@ static int mtk_charger_parse_dt(struct charger_manager *info, struct device *dev
 	info->enable_pe_3 = of_property_read_bool(np, "enable_pe_3");
 	info->enable_pe_4 = of_property_read_bool(np, "enable_pe_4");
 	info->enable_type_c = of_property_read_bool(np, "enable_type_c");
+	info->dcap_support = of_property_read_bool(np, "dcap_support");
 
 	info->enable_hv_charging = true;
 
@@ -1887,6 +1940,55 @@ static int mtk_charger_parse_dt(struct charger_manager *info, struct device *dev
 			"use default TA_AC_CHARGING_CURRENT:%d\n",
 			TA_AC_CHARGING_CURRENT);
 		info->data.ta_ac_charger_current = TA_AC_CHARGING_CURRENT;
+	}
+
+	/* WPC */
+	if (of_property_read_u32(np, "wpc_5w_charger_input_current", &val) >= 0)
+		info->data.wpc_5w_charger_input_current = val;
+	else {
+		chr_err("use default WPC_5W_CHARGER_INPUT_CURRENT:%d\n",
+				WPC_5W_CHARGER_INPUT_CURRENT);
+		info->data.wpc_5w_charger_input_current = WPC_5W_CHARGER_INPUT_CURRENT;
+	}
+
+	if (of_property_read_u32(np, "wpc_5w_charger_current", &val) >= 0)
+		info->data.wpc_5w_charger_current = val;
+	else {
+		chr_err("use default WPC_5W_CHARGER_CURRENT:%d\n",
+				WPC_5W_CHARGER_CURRENT);
+		info->data.wpc_5w_charger_current = WPC_5W_CHARGER_CURRENT;
+	}
+
+	if (of_property_read_u32(np, "wpc_10w_charger_input_current", &val) >= 0)
+		info->data.wpc_10w_charger_input_current = val;
+	else {
+		chr_err("use default WPC_10W_CHARGER_INPUT_CURRENT:%d\n",
+				WPC_10W_CHARGER_INPUT_CURRENT);
+		info->data.wpc_10w_charger_input_current = WPC_10W_CHARGER_INPUT_CURRENT;
+	}
+
+	if (of_property_read_u32(np, "wpc_10w_charger_current", &val) >= 0)
+		info->data.wpc_10w_charger_current = val;
+	else {
+		chr_err("use default WPC_10W_CHARGER_CURRENT:%d\n",
+				WPC_10W_CHARGER_CURRENT);
+		info->data.wpc_10w_charger_current = WPC_10W_CHARGER_CURRENT;
+	}
+
+	if (of_property_read_u32(np, "wpc_15w_charger_input_current", &val) >= 0)
+		info->data.wpc_15w_charger_input_current = val;
+	else {
+		chr_err("use default WPC_15W_CHARGER_INPUT_CURRENT:%d\n",
+				WPC_15W_CHARGER_INPUT_CURRENT);
+		info->data.wpc_15w_charger_input_current = WPC_15W_CHARGER_INPUT_CURRENT;
+	}
+
+	if (of_property_read_u32(np, "wpc_15w_charger_current", &val) >= 0)
+		info->data.wpc_15w_charger_current = val;
+	else {
+		chr_err("use default WPC_15W_CHARGER_CURRENT:%d\n",
+				WPC_15W_CHARGER_CURRENT);
+		info->data.wpc_15w_charger_current = WPC_15W_CHARGER_CURRENT;
 	}
 
 	/* sw jeita */
@@ -2887,6 +2989,7 @@ static int mtk_charger_probe(struct platform_device *pdev)
 
 	info->chg1_data.thermal_charging_current_limit = -1;
 	info->chg1_data.thermal_input_current_limit = -1;
+	info->chg1_data.thermal_input_power_limit = -1;
 	info->chg1_data.force_input_current_limit = -1;
 	info->chg1_data.input_current_limit_by_aicl = -1;
 	info->chg1_data.force_input_current_limit = -1;
@@ -2894,6 +2997,7 @@ static int mtk_charger_probe(struct platform_device *pdev)
 
 	info->chg2_data.thermal_charging_current_limit = -1;
 	info->chg2_data.thermal_input_current_limit = -1;
+	info->chg2_data.thermal_input_power_limit = -1;
 	info->chg2_data.force_input_current_limit = -1;
 
 	info->custom_charging_cv = -1;

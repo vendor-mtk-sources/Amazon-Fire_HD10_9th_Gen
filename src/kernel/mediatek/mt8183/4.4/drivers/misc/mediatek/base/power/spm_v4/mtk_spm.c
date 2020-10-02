@@ -1202,7 +1202,7 @@ int spm_to_sspm_command_async(u32 cmd, struct spm_data *spm_d)
 
 int spm_to_sspm_command_async_wait(u32 cmd)
 {
-	int ack_data;
+	int ack_data = -999;
 	unsigned int ret = 0;
 
 	switch (cmd) {
@@ -1231,7 +1231,7 @@ int spm_to_sspm_command_async_wait(u32 cmd)
 
 int spm_to_sspm_command(u32 cmd, struct spm_data *spm_d)
 {
-	int ack_data;
+	int ack_data = -999;
 	unsigned int ret = 0;
 	/* struct spm_data _spm_d; */
 

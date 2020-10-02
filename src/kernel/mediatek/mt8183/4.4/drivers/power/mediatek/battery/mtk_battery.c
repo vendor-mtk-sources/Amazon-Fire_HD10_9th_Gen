@@ -126,6 +126,7 @@ static enum power_supply_property battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
+	POWER_SUPPLY_PROP_THERMAL_INPUT_POWER_LIMIT,
 	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
 };
@@ -346,6 +347,7 @@ int battery_property_is_writeable(struct power_supply *psy,
 {
 	switch (psp) {
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
+	case POWER_SUPPLY_PROP_THERMAL_INPUT_POWER_LIMIT:
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		return 1;
@@ -371,6 +373,13 @@ static int battery_set_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
 		cm->chg1_data.force_input_current_limit = val->intval;
+		break;
+	case POWER_SUPPLY_PROP_THERMAL_INPUT_POWER_LIMIT:
+		cm->chg1_data.thermal_input_power_limit = val->intval;
+		if (val->intval == 0)
+			wireless_charger_dev_set_vout_en(get_charger_by_name("wireless_chg"), false);
+		else
+			wireless_charger_dev_set_vout_en(get_charger_by_name("wireless_chg"), true);
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
 		cm->chg1_data.force_charging_current = val->intval;
@@ -465,6 +474,14 @@ static int battery_get_property(struct power_supply *psy,
 			ret = -EINVAL;
 		} else {
 			val->intval = cm->chg1_data.force_input_current_limit;
+		}
+		break;
+	case POWER_SUPPLY_PROP_THERMAL_INPUT_POWER_LIMIT:
+		if (IS_ERR_OR_NULL(cm)) {
+			val->intval = 0;
+			ret = -EINVAL;
+		} else {
+			val->intval = cm->chg1_data.thermal_input_power_limit;
 		}
 		break;
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT_MAX:
@@ -1452,7 +1469,10 @@ static void nl_send_to_user(u32 pid, int seq, struct fgd_nl_msg_t *reply_msg)
 
 	reply_msg->identity = FGD_NL_MAGIC;
 
-	skb = alloc_skb(len, GFP_ATOMIC);
+	if (in_interrupt())
+		skb = alloc_skb(len, GFP_ATOMIC);
+	else
+		skb = alloc_skb(len, GFP_KERNEL);
 	if (!skb)
 		return;
 
@@ -1625,9 +1645,12 @@ int wakeup_fg_algo_atomic(unsigned int flow_state)
 		struct fgd_nl_msg_t *fgd_msg;
 		int size = FGD_NL_MSG_T_HDR_LEN + sizeof(flow_state);
 
-		fgd_msg = kmalloc(size, GFP_ATOMIC);
+		if (in_interrupt())
+			fgd_msg = kmalloc(size, GFP_ATOMIC);
+		else
+			fgd_msg = kmalloc(size, GFP_KERNEL);
 		if (!fgd_msg) {
-/* bm_err("Error: wakeup_fg_algo() vmalloc fail!!!\n"); */
+			bm_err("Error: wakeup_fg_algo() vmalloc fail!!!\n");
 			return -1;
 		}
 
@@ -2973,84 +2996,225 @@ static DEVICE_ATTR(
 static ssize_t vendor_name_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	if (gm.battery_id < ARRAY_SIZE(gm.idme_battery_id))
-		if (gm.bat_name[gm.battery_id])
+	uint32_t id;
+
+	for (id = 0; id < ARRAY_SIZE(gm.idme_battery_id_table); id++) {
+		if (gm.idme_battery_id == gm.idme_battery_id_table[id] &&
+				gm.idme_battery_name[id])
 			return scnprintf(buf, PAGE_SIZE, "%s\n",
-						gm.bat_name[gm.battery_id]);
-		else
-			return scnprintf(buf, PAGE_SIZE, "Not available\n");
-	else
-		return scnprintf(buf, PAGE_SIZE, "Invalid\n");
+					gm.idme_battery_name[id]);
+	}
+
+	return scnprintf(buf, PAGE_SIZE, "Unknown\n");
 }
 static DEVICE_ATTR_RO(vendor_name);
+
+static ssize_t cell_vendor_name_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	if (gm.battery_id < gm.num_of_cell)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+					gm.cell_id_name[gm.battery_id]);
+	else
+		return scnprintf(buf, PAGE_SIZE, "Unknown\n");
+}
+static DEVICE_ATTR_RO(cell_vendor_name);
+
+static ssize_t cell_id_adc_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	uint32_t battery_id_adc;
+	int ret;
+
+	ret = IMM_GetOneChannelValue_Cali(gm.adc_channel,
+			&battery_id_adc);
+	if (ret != 0)
+		return scnprintf(buf, PAGE_SIZE, "Invalid\n");
+	else
+		return scnprintf(buf, PAGE_SIZE, "%d\n",
+				((battery_id_adc + 500)/1000));
+}
+static DEVICE_ATTR_RO(cell_id_adc);
 
 static ssize_t gm_soc_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.gm_soc);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_soc);
 }
 static DEVICE_ATTR_RO(gm_soc);
 
 static ssize_t fg_c_soc_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.fg_c_soc);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_fg_c_soc);
 }
 static DEVICE_ATTR_RO(fg_c_soc);
 
 static ssize_t fg_v_soc_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.fg_v_soc);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_fg_v_soc);
 }
 static DEVICE_ATTR_RO(fg_v_soc);
+
+static ssize_t gm30_ui_soc_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_ui_soc);
+}
+static DEVICE_ATTR_RO(gm30_ui_soc);
+
+static ssize_t gm30_vc_diff_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_vc_diff);
+}
+static DEVICE_ATTR_RO(gm30_vc_diff);
 
 static ssize_t vc_mode_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.vc_mode);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_vc_mode);
 }
 static DEVICE_ATTR_RO(vc_mode);
+
+static ssize_t vbat_lk_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_init_vbat);
+}
+static DEVICE_ATTR_RO(vbat_lk);
+
+static ssize_t gm30_t_d0_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_t_d0);
+}
+static DEVICE_ATTR_RO(gm30_t_d0);
+
+static ssize_t gm30_T_table_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_T_table);
+}
+static DEVICE_ATTR_RO(gm30_T_table);
+
+static ssize_t gm30_T_table_c_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_T_table_c);
+}
+static DEVICE_ATTR_RO(gm30_T_table_c);
 
 static ssize_t d0_c_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.d0_c);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_fg_c_d0_soc);
 }
 static DEVICE_ATTR_RO(d0_c);
 
 static ssize_t d0_v_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.d0_v);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_fg_v_d0_soc);
 }
 static DEVICE_ATTR_RO(d0_v);
 
-static ssize_t vbat_lk_show(struct device *dev,
+static ssize_t gm30_quse_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.vbat_lk);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_quse);
 }
-static DEVICE_ATTR_RO(vbat_lk);
+static DEVICE_ATTR_RO(gm30_quse);
+
+static ssize_t gm30_quse_wo_lf_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_quse_wo_lf);
+}
+static DEVICE_ATTR_RO(gm30_quse_wo_lf);
+
+static ssize_t gm30_quse_tb1_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_quse_tb1);
+}
+static DEVICE_ATTR_RO(gm30_quse_tb1);
+
+static ssize_t gm30_quse_wo_lf_tb1_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_quse_wo_lf_tb1);
+}
+static DEVICE_ATTR_RO(gm30_quse_wo_lf_tb1);
+
+static ssize_t gm30_aging_factor_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_aging_factor);
+}
+static DEVICE_ATTR_RO(gm30_aging_factor);
+
+static ssize_t gm30_bat_cycle_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_bat_cycle);
+}
+static DEVICE_ATTR_RO(gm30_bat_cycle);
+
+static ssize_t gm30_cv_soc_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_cv_soc);
+}
+static DEVICE_ATTR_RO(gm30_cv_soc);
+
+static ssize_t gm30_car_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_car);
+}
+static DEVICE_ATTR_RO(gm30_car);
+
+static ssize_t gm30_car_v_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_car_v);
+}
+static DEVICE_ATTR_RO(gm30_car_v);
+
+static ssize_t gm30_qmax_t_0ma_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_qmax_t_0ma);
+}
+static DEVICE_ATTR_RO(gm30_qmax_t_0ma);
+
+static ssize_t gm30_qmax_t_0ma_tb1_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_qmax_t_0ma_tb1);
+}
+static DEVICE_ATTR_RO(gm30_qmax_t_0ma_tb1);
 
 static ssize_t dodinit_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.dodinit);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_init_path);
 }
 static DEVICE_ATTR_RO(dodinit);
 
 static ssize_t vboot_v_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.vboot_v);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_vboot);
 }
 static DEVICE_ATTR_RO(vboot_v);
 
 static ssize_t vboot_c_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", gm.vboot_c);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", fg_log_data.gm30_vboot_c);
 }
 static DEVICE_ATTR_RO(vboot_c);
 
@@ -3646,6 +3810,46 @@ static const struct file_operations adc_cali_fops = {
 	.release = adc_cali_release,
 };
 
+static int battery_setup_gm30_node(struct platform_device *dev)
+{
+	/* runtime data */
+	device_create_file(&(dev->dev), &dev_attr_rtc_ui_soc);
+	device_create_file(&(dev->dev), &dev_attr_gm30_ui_soc);
+	device_create_file(&(dev->dev), &dev_attr_gm_soc);
+	device_create_file(&(dev->dev), &dev_attr_con0_soc);
+	device_create_file(&(dev->dev), &dev_attr_fg_c_soc);
+	device_create_file(&(dev->dev), &dev_attr_fg_v_soc);
+	device_create_file(&(dev->dev), &dev_attr_gm30_vc_diff);
+	device_create_file(&(dev->dev), &dev_attr_vc_mode);
+	device_create_file(&(dev->dev), &dev_attr_gm30_car);
+	device_create_file(&(dev->dev), &dev_attr_gm30_car_v);
+	device_create_file(&(dev->dev), &dev_attr_gm30_aging_factor);
+	device_create_file(&(dev->dev), &dev_attr_gm30_bat_cycle);
+
+	/* initial data */
+	device_create_file(&(dev->dev), &dev_attr_hw_ocv);
+	device_create_file(&(dev->dev), &dev_attr_sw_ocv);
+	device_create_file(&(dev->dev), &dev_attr_dodinit);
+	device_create_file(&(dev->dev), &dev_attr_vbat_lk);
+	device_create_file(&(dev->dev), &dev_attr_d0_c);
+	device_create_file(&(dev->dev), &dev_attr_d0_v);
+	device_create_file(&(dev->dev), &dev_attr_gm30_qmax_t_0ma);
+	device_create_file(&(dev->dev), &dev_attr_gm30_qmax_t_0ma_tb1);
+
+	/* keep them in case it's useful in future */
+	device_create_file(&(dev->dev), &dev_attr_gm30_t_d0);
+	device_create_file(&(dev->dev), &dev_attr_gm30_cv_soc);
+	device_create_file(&(dev->dev), &dev_attr_vboot_v);
+	device_create_file(&(dev->dev), &dev_attr_vboot_c);
+	device_create_file(&(dev->dev), &dev_attr_gm30_quse);
+	device_create_file(&(dev->dev), &dev_attr_gm30_quse_wo_lf);
+	device_create_file(&(dev->dev), &dev_attr_gm30_quse_tb1);
+	device_create_file(&(dev->dev), &dev_attr_gm30_quse_wo_lf_tb1);
+	device_create_file(&(dev->dev), &dev_attr_gm30_T_table);
+	device_create_file(&(dev->dev), &dev_attr_gm30_T_table_c);
+
+	return 0;
+}
 
 /*************************************/
 static struct wakeup_source battery_lock;
@@ -3734,34 +3938,14 @@ static int __init battery_probe(struct platform_device *dev)
 		&dev_attr_vendor_name);
 	ret_device_file = device_create_file(&(dev->dev),
 		&dev_attr_fake_rtc_soc);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_gm_soc);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_fg_c_soc);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_fg_v_soc);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_vc_mode);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_d0_c);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_d0_v);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_vbat_lk);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_dodinit);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_vboot_v);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_vboot_c);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_con0_soc);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_hw_ocv);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_sw_ocv);
-	ret_device_file = device_create_file(&(dev->dev),
-		&dev_attr_rtc_ui_soc);
+
+	if (gm.use_adc_id) {
+		device_create_file(&(dev->dev), &dev_attr_cell_vendor_name);
+		device_create_file(&(dev->dev), &dev_attr_cell_id_adc);
+	}
+
+	/* For GM3.0 debugging */
+	battery_setup_gm30_node(dev);
 
 	if (of_scan_flat_dt(fb_early_init_dt_get_chosen, NULL) > 0)
 		fg_swocv_v =
@@ -3899,6 +4083,9 @@ static int battery_suspend(struct platform_device *dev, pm_message_t state)
 		if (gm.hw_status.iavg_lt > 0)
 			pmic_enable_interrupt(FG_IAVG_L_NO, 0, "GM30");
 	}
+
+	bat_metrics_suspend();
+
 	return 0;
 }
 
@@ -3921,6 +4108,7 @@ static int battery_resume(struct platform_device *dev)
 	/* reset nafg monitor time to avoid suspend for too long case */
 	get_monotonic_boottime(&gm.last_nafg_update_time);
 
+	bat_metrics_resume();
 	fg_update_sw_iavg();
 	return 0;
 }

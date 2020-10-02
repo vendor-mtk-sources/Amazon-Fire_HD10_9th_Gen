@@ -192,6 +192,11 @@ void led_set_brightness(struct led_classdev *led_cdev,
 {
 	int ret = 0;
 
+	if (led_cdev->brightness != LED_OFF && brightness == LED_OFF)
+		pr_notice("[METRICS_DISP] LED OFF\n");
+	else if (led_cdev->brightness == LED_OFF && brightness != LED_OFF)
+		pr_notice("[METRICS_DISP] LED ON\n");
+
 	/* delay brightness if soft-blink is active */
 	if (led_cdev->blink_delay_on || led_cdev->blink_delay_off) {
 		led_cdev->delayed_set_value = brightness;

@@ -20,6 +20,7 @@
 
 #include "inc/mt6370_pmu.h"
 #include "inc/mt6370_pmu_core.h"
+#include "inc/mt6370_pmu_charger.h"
 
 struct mt6370_pmu_core_data {
 	struct mt6370_pmu_chip *chip;
@@ -244,6 +245,8 @@ static void mt6370_pmu_core_shutdown(struct platform_device *pdev)
 	ret = mt6370_pmu_core_reset(core_data);
 	if (ret < 0)
 		dev_err(core_data->dev, "pmu core reset fail\n");
+	if (mtk_chr_is_dcap_enable())
+		mt6370_pmu_reg_clr_bit(core_data->chip, MT6370_PMU_REG_CHGCTRL2, MT6370_MASK_CHG_EN);
 }
 
 static const struct of_device_id mt_ofid_table[] = {

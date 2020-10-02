@@ -107,23 +107,28 @@ static void _disable_all_charging(struct charger_manager *info)
 static int adapter_power_detection_by_ocp(struct charger_manager *info)
 {
 	struct charger_data *pdata = &info->chg1_data;
-	int bak_cv_uv, bak_iusb_ua, bak_ichg_ua;
+	int bak_cv_uv, bak_iusb_ua, bak_ichg_ua, bak_mivr = 0;
 	int cv_uv = info->data.battery_cv;
 	int iusb_ua = info->power_detection.aicl_trigger_iusb;
 	int ichg_ua = info->power_detection.aicl_trigger_ichg;
+	int mivr_uv = info->power_detection.mivr_detect;
 
 	/* Backup IUSB/ICHG/CV setting */
 	charger_dev_get_constant_voltage(info->chg1_dev, &bak_cv_uv);
 	charger_dev_get_input_current(info->chg1_dev, &bak_iusb_ua);
 	charger_dev_get_charging_current(info->chg1_dev, &bak_ichg_ua);
-	pr_info("%s: backup IUSB[%d] ICHG[%d] CV[%d]\n",
+	charger_dev_get_mivr(info->chg1_dev, &bak_mivr);
+	pr_info("%s: backup IUSB[%d] ICHG[%d] CV[%d] MIVR[%d]\n",
 			__func__, _uA_to_mA(bak_iusb_ua),
-			_uA_to_mA(bak_ichg_ua), bak_cv_uv);
+			_uA_to_mA(bak_ichg_ua), bak_cv_uv, bak_mivr);
 
 	/* set higher setting to draw more power */
-	pr_info("%s: set IUSB[%d] ICHG[%d] CV[%d] for detection\n",
+	pr_info("%s: set IUSB[%d] ICHG[%d] CV[%d] MIVR[%d] for detection\n",
 			__func__, _uA_to_mA(iusb_ua),
-			_uA_to_mA(ichg_ua), cv_uv);
+			_uA_to_mA(ichg_ua), cv_uv,
+			(mivr_uv > 0)?mivr_uv:bak_mivr);
+	if (mivr_uv > 0)
+		charger_dev_set_mivr(info->chg1_dev, mivr_uv);
 	charger_dev_set_constant_voltage(info->chg1_dev, cv_uv);
 	charger_dev_set_input_current(info->chg1_dev, iusb_ua);
 	charger_dev_set_charging_current(info->chg1_dev, ichg_ua);
@@ -137,9 +142,9 @@ static int adapter_power_detection_by_ocp(struct charger_manager *info)
 			_uA_to_mA(pdata->input_current_limit_by_aicl));
 
 	/* Restore IUB/ICHG/CV setting */
-	pr_info("%s: restore IUSB[%d] ICHG[%d] CV[%d]\n",
+	pr_info("%s: restore IUSB[%d] ICHG[%d] CV[%d] MIVR[%d]\n",
 			__func__, _uA_to_mA(bak_iusb_ua),
-			_uA_to_mA(bak_ichg_ua), bak_cv_uv);
+			_uA_to_mA(bak_ichg_ua), bak_cv_uv, bak_mivr);
 	charger_dev_set_constant_voltage(info->chg1_dev, bak_cv_uv);
 	charger_dev_set_input_current(info->chg1_dev, bak_iusb_ua);
 	charger_dev_set_charging_current(info->chg1_dev, bak_ichg_ua);
@@ -153,7 +158,7 @@ static int adapter_power_detection(struct charger_manager *info)
 	struct charger_data *pdata = &info->chg1_data;
 	struct power_detection_data *det = &info->power_detection;
 	int chr_type = info->chr_type;
-	int aicl_ua, rp_curr_ma;
+	int aicl_ua = 0, rp_curr_ma;
 	static const char * const category_text[] = {
 		"5W", "7.5W", "9W", "12W", "15W"
 	};
@@ -163,9 +168,6 @@ static int adapter_power_detection(struct charger_manager *info)
 
 	if (det->iusb_ua)
 		goto skip;
-
-	if (chr_type != STANDARD_CHARGER)
-		return 0;
 
 	/* Step 1: Determine Type-C adapter by Rp */
 	rp_curr_ma = tcpm_inquire_typec_remote_rp_curr(info->tcpc);
@@ -180,6 +182,9 @@ static int adapter_power_detection(struct charger_manager *info)
 		det->type = ADAPTER_7_5W;
 		goto done;
 	}
+
+	if (chr_type != STANDARD_CHARGER)
+		return 0;
 
 	/* Step 2: Run AICL for OCP detection on A2C adapter */
 	aicl_ua = adapter_power_detection_by_ocp(info);
@@ -213,9 +218,15 @@ done:
 	return 0;
 
 skip:
-	pdata->input_current_limit = det->iusb_ua;
-	pr_info("%s: alread finish: %d mA, skip\n",
+	if (pdata->thermal_input_current_limit != -1) {
+		pr_info("%s: use thermal_input_current_limit, ignore\n",
+			__func__);
+	} else {
+		pdata->input_current_limit = det->iusb_ua;
+		pr_info("%s: alread finish: %d mA, skip\n",
 			__func__, _uA_to_mA(pdata->input_current_limit));
+	}
+
 	return 0;
 }
 
@@ -225,13 +236,22 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 	struct switch_charging_alg_data *swchgalg = info->algorithm_data;
 	u32 ichg1_min = 0, aicr1_min = 0;
 	int ret;
+	bool wpc_online = false;
+	struct power_supply *psy;
+	union power_supply_propval wpc_vout;
+	int iusb_ua = 0;
 
+	wireless_charger_dev_get_online(get_charger_by_name("wireless_chg"),
+		&wpc_online);
 	pdata = &info->chg1_data;
+
 	mutex_lock(&swchgalg->ichg_aicr_access_mutex);
 
 	/* AICL */
 	if (!mtk_is_pe30_running(info) && !mtk_pe20_get_is_connect(info) &&
-		!mtk_pe_get_is_connect(info) && !mtk_is_TA_support_pd_pps(info))
+		!mtk_pe_get_is_connect(info) &&
+		!mtk_is_TA_support_pd_pps(info) &&
+		!wpc_online)
 		charger_dev_run_aicl(info->chg1_dev, &pdata->input_current_limit_by_aicl);
 
 	if (pdata->force_input_current_limit >= 0) {
@@ -268,10 +288,12 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 
 		if (tcpm_inquire_typec_remote_rp_curr(info->tcpc) == 3000) {
 			pdata->input_current_limit = 3000000;
-			pdata->charging_current_limit = 3000000;
+			pdata->charging_current_limit =
+				info->data.ac_charger_current;
 		} else if (tcpm_inquire_typec_remote_rp_curr(info->tcpc) == 1500) {
 			pdata->input_current_limit = 1500000;
-			pdata->charging_current_limit = 2000000;
+			pdata->charging_current_limit =
+				info->data.ac_charger_current;
 		} else {
 			chr_err("type-C: inquire rp error\n");
 			pdata->input_current_limit = 500000;
@@ -328,6 +350,15 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 	} else if (info->chr_type == APPLE_2_1A_CHARGER) {
 		pdata->input_current_limit = info->data.apple_2_1a_charger_current;
 		pdata->charging_current_limit = info->data.apple_2_1a_charger_current;
+	} else if (info->chr_type == WIRELESS_CHARGER_5W) {
+		pdata->input_current_limit = info->data.wpc_5w_charger_input_current;
+		pdata->charging_current_limit = info->data.wpc_5w_charger_current;
+	} else if (info->chr_type == WIRELESS_CHARGER_10W) {
+		pdata->input_current_limit = info->data.wpc_10w_charger_input_current;
+		pdata->charging_current_limit = info->data.wpc_10w_charger_current;
+	} else if (info->chr_type == WIRELESS_CHARGER_15W) {
+		pdata->input_current_limit = info->data.wpc_15w_charger_input_current;
+		pdata->charging_current_limit = info->data.wpc_15w_charger_current;
 	}
 
 	if (info->enable_sw_jeita) {
@@ -338,6 +369,17 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 				pdata->charging_current_limit =
 				info->data.temp_t0_charging_current_limit;
 			}
+		}
+	}
+
+	if (pdata->thermal_input_power_limit != -1) {
+		psy = power_supply_get_by_name("Wireless");
+		if (psy != NULL) {
+			power_supply_get_property(psy,
+				POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN, &wpc_vout);
+			iusb_ua = pdata->thermal_input_power_limit * 1000 / (wpc_vout.intval/1000);
+			if (iusb_ua < pdata->input_current_limit)
+				pdata->input_current_limit = iusb_ua;
 		}
 	}
 
@@ -381,10 +423,11 @@ done:
 	if (ret != -ENOTSUPP && pdata->input_current_limit < aicr1_min)
 		pdata->input_current_limit = 0;
 
-	chr_err("force:%d thermal:%d,%d pe4:%d,%d,%d setting:%d %d type:%d usb_unlimited:%d usbif:%d usbsm:%d aicl:%d\n",
+	chr_err("force:%d thermal:%d,%d,%d(mW) pe4:%d,%d,%d setting:%d %d type:%d usb_unlimited:%d usbif:%d usbsm:%d aicl:%d\n",
 		_uA_to_mA(pdata->force_charging_current),
 		_uA_to_mA(pdata->thermal_input_current_limit),
 		_uA_to_mA(pdata->thermal_charging_current_limit),
+		pdata->thermal_input_power_limit,
 		_uA_to_mA(info->pe4.pe4_input_current_limit),
 		_uA_to_mA(info->pe4.pe4_input_current_limit_setting),
 		_uA_to_mA(info->pe4.input_current_limit),

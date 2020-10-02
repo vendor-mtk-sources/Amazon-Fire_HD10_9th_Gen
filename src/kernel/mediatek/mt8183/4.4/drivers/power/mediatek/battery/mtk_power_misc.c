@@ -22,6 +22,8 @@
 
 #include <mt-plat/charger_type.h>
 #include <mt-plat/mtk_battery.h>
+#include <mt-plat/mtk_charger.h>
+#include <mt-plat/charger_class.h>
 #else
 #include <string.h>
 #include "simulator_kernel.h"
@@ -153,6 +155,8 @@ int set_shutdown_cond(int shutdown_cond)
 	int vbat;
 	struct shutdown_condition *sds;
 	int enable_lbat_shutdown;
+	struct charger_device *chg1_dev = NULL;
+	struct charger_consumer *p_consumer = NULL;
 
 #ifdef SHUTDOWN_CONDITION_LOW_BAT_VOLT
 	enable_lbat_shutdown = 1;
@@ -255,6 +259,15 @@ int set_shutdown_cond(int shutdown_cond)
 #endif
 		sdc.shutdown_status.is_low_battery_temp = true;
 		mutex_unlock(&sdc.lock);
+
+		chg1_dev = get_charger_by_name("primary_chg");
+		if (chg1_dev != NULL) {
+			p_consumer = charger_manager_get_by_name(&chg1_dev->dev,
+				"charger");
+			if (p_consumer != NULL)
+				charger_manager_enable_dcap(p_consumer,
+					MAIN_CHARGER, true);
+		}
 		orderly_poweroff(true);
 		break;
 	default:

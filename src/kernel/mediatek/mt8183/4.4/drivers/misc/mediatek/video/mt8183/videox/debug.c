@@ -350,6 +350,7 @@ static int alloc_buffer_from_ion(size_t size, struct test_buf_info *buf_info)
 	buf_info->ion_client = client;
 
 	memset((void *)&mm_data, 0, sizeof(struct ion_mm_data));
+	memset(&phy_addr, 0, sizeof(ion_phys_addr_t));
 
 	handle = ion_alloc(client, size, 0, ION_HEAP_MULTIMEDIA_MASK, 0);
 	if (IS_ERR(buf_info->handle)) {

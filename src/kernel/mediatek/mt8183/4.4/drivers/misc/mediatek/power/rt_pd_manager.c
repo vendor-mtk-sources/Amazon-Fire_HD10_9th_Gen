@@ -181,6 +181,7 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 #ifdef CONFIG_MTK_KERNEL_POWER_OFF_CHARGING
 	int boot_mode = 0;
 #endif /* CONFIG_MTK_KERNEL_POWER_OFF_CHARGING */
+	bool wpc_online = false;
 
 	switch (event) {
 	case TCP_NOTIFY_SOURCE_VCONN:
@@ -224,6 +225,7 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 			if (pd_sink_voltage_new) {
 				/* enable charger */
 #if CONFIG_MTK_GAUGE_VERSION == 30
+				wireless_charger_dev_force_en_charge(get_charger_by_name("wireless_chg"), false);
 				charger_manager_enable_power_path(chg_consumer, MAIN_CHARGER, true);
 #else
 				mtk_chr_pd_enable_power_path(1);
@@ -263,6 +265,13 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 			(noti->typec_state.new_state == TYPEC_ATTACHED_SNK ||
 			noti->typec_state.new_state == TYPEC_ATTACHED_CUSTOM_SRC ||
 			noti->typec_state.new_state == TYPEC_ATTACHED_NORP_SRC)) {
+
+			wireless_charger_dev_get_online(get_charger_by_name("wireless_chg"), &wpc_online);
+			if (wpc_online && noti->typec_state.new_state == TYPEC_ATTACHED_NORP_SRC) {
+				pr_info("WPC online, ignore NORP.SRC\n");
+				return NOTIFY_DONE;
+			}
+
 			charger_ignore_usb(false);
 #if CONFIG_MTK_GAUGE_VERSION == 30
 			charger_dev_enable_chg_type_det(primary_charger, true);

@@ -70,6 +70,18 @@ void pmic_enable_smart_reset(unsigned char smart_en,
 		__func__, smart_en, smart_sdn_en);
 }
 
+void pmic_charger_auto_on(bool bEn)
+{
+	/* enable envtem */
+	if (bEn)
+		pmic_set_register_value(PMIC_RG_ENVTEM_D, 0);
+	else
+		pmic_set_register_value(PMIC_RG_ENVTEM_D, 1);
+
+	/* enable envtem write */
+	pmic_set_register_value(PMIC_RG_ENVTEM_EN, 1);
+}
+
 void wk_pmic_enable_sdn_delay(void)
 {
 	pmic_set_register_value(PMIC_TMA_KEY, 0x9CA7);

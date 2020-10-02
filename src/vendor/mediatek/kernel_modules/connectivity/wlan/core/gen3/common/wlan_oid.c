@@ -12771,15 +12771,11 @@ wlanoidSwitchAntenna(IN P_ADAPTER_T prAdapter,
 
 	prAisAntSwInfo = &prAdapter->rWifiVar.rAisAntSwitchInfo;
 	prAisAntSwData = &prAdapter->rWifiVar.rAisAntSwitchStatistic;
-	u4PreferAntNum = *(PUINT32)pvSetBuffer;
-	// take orientation 0, 3 as main antenna
-	if (u4PreferAntNum == 3) {
-		u4PreferAntNum = 0;
-	}
-	// take orientation 1, 2 as auxiliary antenna
-	if (u4PreferAntNum == 2) {
-		u4PreferAntNum = 1;
-	}
+
+	/* mapping orientation to specified ant placement by device type ID */
+	u4PreferAntNum = prAisAntSwInfo->ant_placement_table[*(PUINT32)pvSetBuffer];
+	DBGLOG(OID, TRACE, "[AntS] pvSetBuffer=%d, u4PreferAntNum= %d\n", *(PUINT32)pvSetBuffer, u4PreferAntNum);
+
 	u4AntNum = prAisAntSwInfo->ucCurrentAntenna;
 	prAisAntSwData->u4ASOrientationTotal++;
 
@@ -12926,7 +12922,7 @@ wlanoidAntSwitchTest(IN P_ADAPTER_T prAdapter,
 				"\nGlueInfo: AS[%d] Quy[%d] RT[%d] BI[%s]\n"
 				"Info: S[%d] Ant[%u/%u] Rcpi[%u/%u] Idx[%u]\n"
 				"      Detect[%d] Tc[%u] Delta[%d] No[%u]\n"
-				"      BSSID[%pM]\n"
+				"      BSSID[%pM] Placement[%u %u %u %u]\n"
 				"Data: SC[%u/%u] SS[%u/%u] T[%u/%u] P[%u]",
 				prAdapter->prGlueInfo->fgIsAntSwitchDisable,
 				prAdapter->prGlueInfo->fgIsEnableAntSwQuery,
@@ -12943,6 +12939,10 @@ wlanoidAntSwitchTest(IN P_ADAPTER_T prAdapter,
 				prAisAntSwInfo->ucAntRCPIDelta,
 				prAisAntSwInfo->ucSwitchAntNum,
 				prAisAntSwInfo->aucBSSID,
+				prAisAntSwInfo->ant_placement_table[0],
+				prAisAntSwInfo->ant_placement_table[1],
+				prAisAntSwInfo->ant_placement_table[2],
+				prAisAntSwInfo->ant_placement_table[3],
 				prAisAntSwData->u4PreviousSwitchCnt,
 				prAisAntSwData->u4AntSwitchCount,
 				prAisAntSwData->u4PreviousSwitchSucCnt,

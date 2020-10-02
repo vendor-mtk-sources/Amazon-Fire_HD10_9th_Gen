@@ -519,6 +519,7 @@ void ddp_mmp_wdma_layer(struct WDMA_CONFIG_STRUCT *wdma_layer, unsigned int wdma
 	Bitmap.data1 = wdma_layer->dstAddress;
 	Bitmap.width = wdma_layer->srcWidth;
 	Bitmap.height = wdma_layer->srcHeight;
+	Bitmap.data_size = wdma_layer->dstPitch * wdma_layer->srcHeight;
 	switch (wdma_layer->outputFormat) {
 	case UFMT_RGB565:
 	case UFMT_BGR565:

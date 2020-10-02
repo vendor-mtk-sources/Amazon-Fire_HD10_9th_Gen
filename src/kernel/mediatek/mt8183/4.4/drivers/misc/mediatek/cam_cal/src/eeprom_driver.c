@@ -23,6 +23,7 @@
 #include "cam_cal.h"
 #include "cam_cal_define.h"
 #include "cam_cal_list.h"
+#include "kd_imgsensor.h"
 /*#include <asm/system.h>  // for SM*/
 #include <linux/dma-mapping.h>
 #ifdef CONFIG_COMPAT
@@ -153,24 +154,52 @@ static int EEPROM_get_cmd_info(unsigned int sensorID, struct stCAM_CAL_CMD_INFO_
 	struct stCAM_CAL_FUNC_STRUCT *pCamCalFunc = NULL;
 	int i = 0;
 
+	bool use_idme = false;
+
+#if defined(CONFIG_CAM_OTP_DATA_USE_IDME)
+	if (sensorID == HI556_SENSOR_ID ||
+	    sensorID == OV02B_SENSOR_ID ||
+	    sensorID == GC5035_SENSOR_ID ||
+	    sensorID == GC02M1TR_SENSOR_ID ||
+	    sensorID == GC02M1TRSEC_SENSOR_ID) {
+		use_idme = true;
+	}
+#endif
+
 	cam_cal_get_sensor_list(&pCamCalList);
 	cam_cal_get_func_list(&pCamCalFunc);
 	if (pCamCalList != NULL && pCamCalFunc != NULL) {
 		PK_DBG("pCamCalList!=NULL && pCamCalFunc!= NULL\n");
 		for (i = 0; pCamCalList[i].sensorID != 0; i++) {
 			if (pCamCalList[i].sensorID == sensorID) {
-				g_Current_Client->addr = pCamCalList[i].slaveID >> 1;
-				cmdInfo->client = g_Current_Client;
-
-				PK_DBG("pCamCalList[%d].sensorID==%x\n", i, pCamCalList[i].sensorID);
-				PK_DBG("g_Current_Client->addr =%x\n", g_Current_Client->addr);
-				PK_DBG("20 client=%p client2=%p client3=%p Cur=%p\n",
-					g_pstI2Cclient, g_pstI2Cclient2, g_pstI2Cclient3, g_Current_Client);
-
-				if (pCamCalList[i].checkFunc(cmdInfo->client, pCamCalFunc[0].readCamCalData)) {
-					PK_DBG("pCamCalList[%d].checkFunc ok!\n", i);
-					cmdInfo->readCMDFunc = pCamCalFunc[0].readCamCalData;
-					return 1;
+				if (!use_idme) {
+					g_Current_Client->addr =
+						pCamCalList[i].slaveID >> 1;
+						cmdInfo->client = g_Current_Client;
+						PK_DBG(
+						  "pCamCalList[%d].sensorID==%x\n",
+						  i, pCamCalList[i].sensorID);
+						PK_DBG(
+						  "g_Current_Client->addr =%x\n",
+						  g_Current_Client->addr);
+						PK_DBG(
+						  "20 client=%p client2=%p client3=%p Cur=%p\n",
+						  g_pstI2Cclient, g_pstI2Cclient2,
+						  g_pstI2Cclient3, g_Current_Client);
+						if (pCamCalList[i].checkFunc(cmdInfo->client,
+							pCamCalFunc[0].readCamCalData)) {
+							PK_DBG(
+							  "pCamCalList[%d].checkFunc ok!\n",
+							  i);
+							cmdInfo->readCMDFunc =
+								pCamCalFunc[0].readCamCalData;
+							return 1;
+						}
+				} else {
+						if (pCamCalList[i].readCamCalData) {
+							cmdInfo->readCMDFunc = pCamCalList[i].readCamCalData;
+							return 1;
+						}
 				}
 			}
 		}
@@ -553,6 +582,7 @@ static long EEPROM_drv_ioctl(
 	int i4RetValue = 0;
 	u8 *pBuff = NULL;
 	u8 *pu1Params = NULL;
+	bool use_idme = false;
 	/*u8 *tempP = NULL;*/
 	struct stCAM_CAL_INFO_STRUCT *ptempbuf = NULL;
 	struct stCAM_CAL_CMD_INFO_STRUCT *pcmdInf = NULL;
@@ -602,6 +632,17 @@ static long EEPROM_drv_ioctl(
 		PK_DBG("ptempbuf is Null !!!");
 		return -EFAULT;
 	}
+
+#if defined(CONFIG_CAM_OTP_DATA_USE_IDME)
+	if (ptempbuf->sensorID == HI556_SENSOR_ID ||
+		ptempbuf->sensorID == OV02B_SENSOR_ID ||
+		ptempbuf->sensorID == GC5035_SENSOR_ID ||
+		ptempbuf->sensorID == GC02M1TR_SENSOR_ID ||
+		ptempbuf->sensorID == GC02M1TRSEC_SENSOR_ID) {
+		use_idme = true;
+	}
+#endif
+
 	switch (a_u4Command) {
 
 	case CAM_CALIOC_S_WRITE:/*Note: Write Command is Unverified!*/
@@ -610,6 +651,9 @@ static long EEPROM_drv_ioctl(
 		do_gettimeofday(&ktv1);
 #endif
 
+		if (use_idme)
+			return -EFAULT;
+
 		if (EEPROM_set_i2c_bus(ptempbuf->deviceID) != 0) {
 			PK_DBG("deviceID Error!\n");
 			kfree(pBuff);
@@ -617,7 +661,9 @@ static long EEPROM_drv_ioctl(
 			return -EFAULT;
 		}
 
-	pcmdInf = EEPROM_get_cmd_info_ex(ptempbuf->sensorID, ptempbuf->deviceID);
+
+		pcmdInf = EEPROM_get_cmd_info_ex(
+			ptempbuf->sensorID, ptempbuf->deviceID);
 
 	if (pcmdInf != NULL) {
 		if (pcmdInf->writeCMDFunc != NULL) {
@@ -648,7 +694,7 @@ static long EEPROM_drv_ioctl(
 		do_gettimeofday(&ktv1);
 #endif
 
-		if (EEPROM_set_i2c_bus(ptempbuf->deviceID) != 0) {
+		if (!use_idme && EEPROM_set_i2c_bus(ptempbuf->deviceID) != 0) {
 			PK_DBG("deviceID Error!\n");
 			kfree(pBuff);
 			kfree(pu1Params);
@@ -658,12 +704,14 @@ static long EEPROM_drv_ioctl(
 		pcmdInf = EEPROM_get_cmd_info_ex(ptempbuf->sensorID, ptempbuf->deviceID);
 
 		if (pcmdInf != NULL) {
-			if (pcmdInf->readCMDFunc != NULL)
+			if (pcmdInf->readCMDFunc != NULL) {
 				i4RetValue = pcmdInf->readCMDFunc(pcmdInf->client,
 					ptempbuf->u4Offset, pu1Params, ptempbuf->u4Length);
-			else {
+			} else {
 				PK_DBG("pcmdInf->readCMDFunc == NULL\n");
 			}
+		} else{
+					PK_DBG("pcmdInf == NULL\n");
 		}
 
 #ifdef CAM_CALGETDLT_DEBUG

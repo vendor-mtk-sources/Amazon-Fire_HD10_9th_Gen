@@ -177,6 +177,20 @@ static void rtc_save_pwron_time(bool enable, struct rtc_time *tm, bool logo);
 
 static int rtc_show_time;
 static int rtc_show_alarm = 1;
+static unsigned long rtc_lock_flags;
+
+void rtc_acquire_lock(void)
+{
+	spin_lock_irqsave(&rtc_lock, rtc_lock_flags);
+}
+EXPORT_SYMBOL(rtc_acquire_lock);
+
+void rtc_release_lock(void)
+{
+	spin_unlock_irqrestore(&rtc_lock, rtc_lock_flags);
+}
+EXPORT_SYMBOL(rtc_release_lock);
+
 
 #if 1
 unsigned long rtc_read_hw_time(void)
@@ -426,7 +440,7 @@ void rtc_bbpu_power_down(void)
 	bool charger_status;
 
 	mtk_chr_is_charger_exist(&exist);
-	if (exist == 1) {
+	if (exist == 1 && !mtk_chr_is_dcap_enable()) {
 		charger_status = true;
 		rtc_mark_enter_kpoc();
 	} else

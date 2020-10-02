@@ -228,6 +228,11 @@ extern UINT_8 g_aucNvram[];
 #define GLUE_FLAG_HAL_MCR_WR_BIT    (17)
 #endif
 
+#ifdef CONFIG_IDME
+#define DEV_TYPE_ID_MAVERICK 0x003F
+#define DEV_TYPE_ID_TRONA 0x005E
+#endif
+
 #if CFG_SUPPORT_ANT_DIVERSITY
 #define BOARD_ID_MAVERICK_PROTO         "003F001000010019"
 #define BOARD_ID_MAVERICK_HVT           "003F001100010019"
@@ -239,6 +244,15 @@ extern UINT_8 g_aucNvram[];
 #define ANT_SWITCH_GOOD_PANEL           0x0000000C
 #define ANT_SWITCH_PANEL_IDME_PATTERN   0x0000000C
 #define ANT_SWITCH_PATTERN_IMDE_ONLY    0x00000005
+
+#define MAIN_ANT_INDEX 0
+#define SECOND_ANT_INDEX 1
+/* ant_placement mapping to orientation 0,1,2,3 */
+#define ant_placement_maverick {MAIN_ANT_INDEX, SECOND_ANT_INDEX, SECOND_ANT_INDEX, MAIN_ANT_INDEX}
+#define ant_placement_trona {MAIN_ANT_INDEX, MAIN_ANT_INDEX, SECOND_ANT_INDEX, SECOND_ANT_INDEX}
+
+extern unsigned int g_board_type;
+extern unsigned int idme_get_board_type(void);
 #endif
 
 #define GLUE_BOW_KFIFO_DEPTH        (1024)

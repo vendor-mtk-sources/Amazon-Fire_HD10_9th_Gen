@@ -1125,6 +1125,30 @@ static int mt6370_set_low_power_mode(
 	rv = mt6370_i2c_write8(tcpc_dev, MT6370_REG_BMC_CTRL, data);
 	return rv;
 }
+
+static int mt6370_suspend_set_low_power_mode(
+		struct tcpc_device *tcpc_dev, bool en, int pull)
+{
+	int rv = 0;
+	uint8_t data;
+
+	if (en) {
+		data = MT6370_REG_BMCIO_LPEN;
+
+		if (pull & TYPEC_CC_RP)
+			data |= MT6370_REG_BMCIO_LPRPRD;
+
+#ifdef CONFIG_TYPEC_CAP_NORP_SRC
+		data |= MT6370_REG_VBUS_DET_EN | MT6370_REG_BMCIO_BG_EN;
+#endif	/* CONFIG_TYPEC_CAP_NORP_SRC */
+	} else {
+		data = MT6370_REG_BMCIO_BG_EN |
+			MT6370_REG_VBUS_DET_EN | MT6370_REG_BMCIO_OSC_EN;
+	}
+
+	rv = mt6370_i2c_write8(tcpc_dev, MT6370_REG_BMC_CTRL, data);
+	return rv;
+}
 #endif	/* CONFIG_TCPC_LOW_POWER_MODE */
 
 #ifdef CONFIG_TCPC_WATCHDOG_EN
@@ -1668,7 +1692,7 @@ static int mt6370_i2c_suspend(struct device *dev)
 	tcpc_dev = chip->tcpc;
 	if (typec_is_drp_toggling()) {
 		dev_info(dev, "%s: drp is toggling\n", __func__);
-		ret = tcpci_set_low_power_mode(tcpc_dev, false,
+		ret = mt6370_suspend_set_low_power_mode(tcpc_dev, false,
 					       TYPEC_CC_RD);
 		/* mask cc alert */
 		mt6370_i2c_clr_bit(tcpc_dev, TCPC_V10_REG_ALERT_MASK,
@@ -1689,7 +1713,7 @@ static int mt6370_i2c_suspend(struct device *dev)
 		tcpci_get_cc(tcpc_dev);
 		/* check cc is not change */
 		if (typec_is_cc_open())
-			ret = tcpci_set_low_power_mode(tcpc_dev, true,
+			ret = mt6370_suspend_set_low_power_mode(tcpc_dev, true,
 						       TYPEC_CC_RD);
 		else
 			tcpci_set_cc(tcpc_dev, TYPEC_CC_DRP);

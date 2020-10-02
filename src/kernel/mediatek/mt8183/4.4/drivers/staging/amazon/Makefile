@@ -11,3 +11,4 @@ obj-$(CONFIG_AMAZON_METRICS_LOG_TEST)	+= amazon_logger_test.o
 obj-$(CONFIG_INPUT_AMZN_KEYCOMBO)	+= amzn_keycombo.o
 obj-$(CONFIG_AMAZON_INTEGRITY_MODULE)	+= amzn_integrity_module.o
 obj-$(CONFIG_AMAZON_LD)	+= amzn_ld.o
+obj-$(CONFIG_AMZN_RT_TRACE)	+= amzn_rt_trace.o

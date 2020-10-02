@@ -273,7 +273,7 @@ static int __ged_log_buf_write(GED_LOG_BUF *psGEDLogBuf, const char __user *pszB
 	int cnt;
 	char buf[256];
 
-	if (!psGEDLogBuf)
+	if (!psGEDLogBuf || (i32Count < 0))
 	{
 		return 0;
 	}

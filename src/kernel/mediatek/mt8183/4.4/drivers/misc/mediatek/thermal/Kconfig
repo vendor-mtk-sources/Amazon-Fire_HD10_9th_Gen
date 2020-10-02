@@ -22,3 +22,5 @@ config VS_BACKLIGHT_COOLER
 config VS_BCCT_COOLER
 	bool "Virtual Sensor battery current cooler"
 	default n
+
+source "drivers/misc/mediatek/thermal/common/thermal_zones/Kconfig"

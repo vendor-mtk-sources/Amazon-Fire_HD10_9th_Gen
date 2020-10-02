@@ -74,7 +74,7 @@
 #include <linux/sign_of_life.h>
 #endif
 
-#ifdef CONFIG_VIRTUAL_SENSOR_THERMAL
+#if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
 #include <linux/thermal_framework.h>
 #endif
 
@@ -539,17 +539,24 @@ static int tscpu_thermal_notify(struct thermal_zone_device *thermal,
 {
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 	if (type == THERMAL_TRIP_CRITICAL) {
-		tscpu_printk("[%s] Thermal shutdown CPU, temp=%d, trip=%d\n",
-				__func__, thermal->temperature, trip);
+		pr_err("[%s][%s]type:[%s] Thermal shutdown CPU, current temp=%d, trip=%d, trip_temp=%d\n",
+			__func__, dev_name(&thermal->device), thermal->type,
+			thermal->temperature, trip, trip_temp[trip]);
 		life_cycle_set_thermal_shutdown_reason(THERMAL_SHUTDOWN_REASON_SOC);
 	}
 #endif
-#ifdef CONFIG_VIRTUAL_SENSOR_THERMAL
+
+#if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
 	if (type == THERMAL_TRIP_CRITICAL) {
 		pr_err("%s: thermal_shutdown notify\n", __func__);
 		last_kmsg_thermal_shutdown();
 		pr_err("%s: thermal_shutdown notify end\n", __func__);
 	}
+#endif
+
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+	if (type == THERMAL_TRIP_CRITICAL)
+		set_shutdown_enable_dcap(&thermal->device);
 #endif
 
 	return 0;

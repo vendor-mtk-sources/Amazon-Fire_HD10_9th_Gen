@@ -17,6 +17,7 @@
 #define __LINUX_MFD_MT6370_PMU_H
 
 #include <mt-plat/rt-regmap.h>
+#include <mt-plat/mtk_charger.h>
 #include <linux/rtmutex.h>
 #include <linux/interrupt.h>
 

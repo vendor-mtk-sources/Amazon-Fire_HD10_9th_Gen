@@ -164,4 +164,5 @@
 #define EXTERNAL_SWCHR_SUPPORT
 #endif
 
+extern bool mtk_chr_is_dcap_enable(void);
 #endif /* _CUST_BAT_H_ */

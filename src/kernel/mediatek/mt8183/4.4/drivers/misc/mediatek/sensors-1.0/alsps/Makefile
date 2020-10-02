@@ -10,3 +10,5 @@ obj-$(CONFIG_MTK_EPL2182)	+=  epl2182/
 obj-$(CONFIG_MTK_LTR303)	+=  ltr303/
 obj-$(CONFIG_MTK_STK3X1X_NEW)	+=  stk3x1x/
 obj-$(CONFIG_MTK_LTR578)	+=  ltr578/
+obj-$(CONFIG_MTK_STK3X1X_DUAL)  +=  stk3x1x_dual/
+obj-$(CONFIG_MTK_LTRX130A_DUAL)  +=  ltrx130a_dual/

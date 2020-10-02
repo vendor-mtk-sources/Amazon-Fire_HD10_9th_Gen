@@ -16,6 +16,8 @@ int bat_metrics_critical_shutdown(void);
 int bat_metrics_top_off_mode(bool is_on, long plugin_time);
 int bat_metrics_init(void);
 int bat_metrics_adapter_power(u32 type, u32 aicl_ma);
+int bat_metrics_suspend(void);
+int bat_metrics_resume(void);
 void bat_metrics_uninit(void);
 #else
 static inline void bat_metrics_chrdet(u32 chr_type) {}
@@ -25,6 +27,8 @@ static inline void bat_metrics_critical_shutdown(void) {}
 static inline void bat_metrics_top_off_mode(bool is_on, long plugin_time) {}
 static inline void bat_metrics_init(void) {}
 static inline void bat_metrics_adapter_power(void) {}
+static inline void bat_metrics_suspend(void) {}
+static inline void bat_metrics_resume(void) {}
 static inline void bat_metrics_uninit(void) {}
 #endif
 

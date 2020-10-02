@@ -1160,6 +1160,14 @@ LCM_DRIVER *lcm_driver_list[] = {
 #if defined(ES6311_ANX6585_ZIGZAG_WXGA)
 	&es6311_anx6585_zigzag_wxga_lcm_drv,
 #endif
+
+#if defined(HX83102_WUXGA_DSI_VDO)
+	&hx83102_wuxga_dsi_vdo_lcm_drv,
+#endif
+
+#if defined(FT8201_WUXGA_DSI_VDO)
+	&ft8201_wuxga_dsi_vdo_lcm_drv,
+#endif
 };
 
 unsigned char lcm_name_list[][128] = {
