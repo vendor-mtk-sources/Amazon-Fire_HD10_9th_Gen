@@ -61,7 +61,7 @@
 ********************************************************************************
 */
 /* #define MAX_IOREQ_NUM   10 */
-#ifdef CONFIG_IDME
+#if defined(CONFIG_IDME) || defined(CONFIG_AMZN_IDME)
 #define IDME_OF_MAC_ADDR	"/idme/mac_addr"
 #define IDME_OF_WIFI_MFG        "/idme/wifi_mfg"
 #define IDME_OF_BOARD_ID	"/idme/board_id"
@@ -2618,7 +2618,7 @@ static void wlanGetDefaultWifiMfg(P_REG_INFO_T prRegInfo)
 	prRegInfo->ucGpsDesense = 0;
 }
 
-#ifdef CONFIG_IDME
+#if defined(CONFIG_IDME) || defined(CONFIG_AMZN_IDME)
 
 static WIFI_CFG_PARAM_STRUCT idme_wifi_mfg;
 
@@ -2928,7 +2928,7 @@ static INT_32 wlanProbe(PVOID pvData)
 		/* Load NVRAM content to REG_INFO_T */
 		kalMemZero(&prGlueInfo->rRegInfo, sizeof(REG_INFO_T));
 
-#ifdef CONFIG_IDME
+#if defined(CONFIG_IDME) || defined(CONFIG_AMZN_IDME)
 	if (idme_get_wifi_mfg(&prGlueInfo->rRegInfo) == 0) { /* read idme OK */
 		 /* copy idme Wifi data to prRegInfo */
 		wlanCopyIdmeWifiMfg(&prGlueInfo->rRegInfo);
@@ -2942,7 +2942,7 @@ static INT_32 wlanProbe(PVOID pvData)
 			prGlueInfo->fgNvramAvailable = TRUE;
 		}
 	}
-#ifdef CONFIG_IDME
+#if defined(CONFIG_IDME) || defined(CONFIG_AMZN_IDME)
 		idme_get_mac_addr(&prGlueInfo->rRegInfo);
 		idme_get_board_id(prGlueInfo);
 		g_board_type = idme_get_board_type();

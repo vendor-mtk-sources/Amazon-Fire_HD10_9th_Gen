@@ -456,8 +456,9 @@ static struct SV_LOG_STR gSvLog[OWE_IRQ_TYPE_AMOUNT];
 	ptr = pDes = (char *)&(gSvLog[irq]._str[ppb][logT][gSvLog[irq]._cnt[ppb][logT]]);    \
 	avaLen = str_leng - 1 - gSvLog[irq]._cnt[ppb][logT];\
 	if (avaLen > 1) {\
-		snprintf((char *)(pDes), avaLen, fmt,\
-			##__VA_ARGS__);   \
+		if (snprintf((char *)(pDes), avaLen, fmt,\
+			##__VA_ARGS__) < 0)\
+			LOG_ERR("snprintf fail");\
 		if ('\0' != gSvLog[irq]._str[ppb][logT][str_leng - 1]) {\
 			LOG_ERR("log str over flow(%d)", irq);\
 		} \
@@ -509,9 +510,12 @@ static struct SV_LOG_STR gSvLog[OWE_IRQ_TYPE_AMOUNT];
 			avaLen = str_leng - 1;\
 			ptr = pDes = (char *)&(pSrc->_str[ppb][logT][pSrc->_cnt[ppb][logT]]);\
 			ptr2 = &(pSrc->_cnt[ppb][logT]);\
-			snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__);   \
-			while (*ptr++ != '\0') {\
-				(*ptr2)++;\
+			if (snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__) < 0)\
+				LOG_ERR("snprintf fail");\
+			else {\
+				while (*ptr++ != '\0') {\
+					(*ptr2)++;\
+				} \
 			} \
 		} \
 	} \
@@ -523,7 +527,7 @@ static struct SV_LOG_STR gSvLog[OWE_IRQ_TYPE_AMOUNT];
 	struct SV_LOG_STR *pSrc = &gSvLog[irq];\
 	char *ptr;\
 	unsigned int i;\
-	signed int ppb = 0;\
+	unsigned int ppb = 0;\
 	signed int logT = 0;\
 	if (ppb_in > 1) {\
 		ppb = 1;\
@@ -4037,7 +4041,9 @@ static ssize_t owe_reg_write(struct file *file, const char __user *buffer, size_
 	if (OWEInfo.UserCount <= 0)
 		return 0;
 
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+	len = (sizeof(desc) - 1);
+	if (count < len && count >= 0)
+		len = count;
 	if (copy_from_user(desc, buffer, len))
 		return 0;
 

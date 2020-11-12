@@ -2892,24 +2892,28 @@ void DSI_set_cmdq_V3(enum DISP_MODULE_ENUM module, struct cmdqRecStruct *cmdq,
 		if (DSI_REG[d]->DSI_MODE_CTRL.MODE) { /* vdo mode */
 			struct DSI_VM_CMD_CON_REG vm_cmdq;
 
-			OUTREG32(&vm_cmdq, AS_UINT32(&DSI_REG[d]->DSI_VM_CMD_CON));
+			memset(&vm_cmdq, 0, sizeof(struct DSI_VM_CMD_CON_REG));
+
+			DSI_READREG32(struct DSI_VM_CMD_CON_REG *, &vm_cmdq, &DSI_REG[d]->DSI_VM_CMD_CON);
 			DDPMSG("set cmdq in VDO mode\n");
 			if (count > 1) {
 				vm_cmdq.LONG_PKT = 1;
 				vm_cmdq.CM_DATA_ID = data_id;
 				vm_cmdq.CM_DATA_0 = count + 1;
-				OUTREG32(&DSI_REG[d]->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
+				DSI_OUTREG32(cmdq, &DSI_REG[d]->DSI_VM_CMD_CON,
+					     AS_UINT32(&vm_cmdq));
 
 				goto_addr = (unsigned long)(&DSI_VM_CMD_REG[d]->data[0].byte0);
 				mask_para = (0xFF << ((goto_addr & 0x3) * 8));
 				set_para = (cmd << ((goto_addr & 0x3) * 8));
-				MASKREG32(goto_addr & (~0x3), mask_para, set_para);
+				DSI_MASKREG32(cmdq, goto_addr & (~0x3), mask_para,
+					      set_para);
 
 				for (i = 0; i < count; i++) {
 					goto_addr = (unsigned long)(&DSI_VM_CMD_REG[d]->data[0].byte1) + i;
 					mask_para = (0xFF << ((goto_addr & 0x3) * 8));
 					set_para = (para_list[i] << ((goto_addr & 0x3) * 8));
-					MASKREG32(goto_addr & (~0x3), mask_para, set_para);
+					DSI_MASKREG32(cmdq, goto_addr & (~0x3), mask_para, set_para);
 				}
 			} else {
 				vm_cmdq.LONG_PKT = 0;
@@ -2921,7 +2925,8 @@ void DSI_set_cmdq_V3(enum DISP_MODULE_ENUM module, struct cmdqRecStruct *cmdq,
 					vm_cmdq.CM_DATA_ID = data_id;
 					vm_cmdq.CM_DATA_1 = 0;
 				}
-				OUTREG32(&DSI_REG[d]->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
+				DSI_OUTREG32(cmdq, &DSI_REG[d]->DSI_VM_CMD_CON,
+					     AS_UINT32(&vm_cmdq));
 			}
 			/* start DSI VM CMDQ */
 			if (force_update)
@@ -3254,6 +3259,7 @@ int ddp_dsi_set_lcm_utils(enum DISP_MODULE_ENUM module, LCM_DRIVER *lcm_drv)
 		utils->dsi_set_cmdq = DSI_set_cmdq_wrapper_DSI0;
 		utils->dsi_set_cmdq_V2 = DSI_set_cmdq_V2_Wrapper_DSI0;
 		utils->dsi_set_cmdq_V3 = DSI_set_cmdq_V3_Wrapper_DSI0;
+		utils->dsi_set_cmdq_backlight = primary_display_set_backlight_mode_by_cmdq;
 		utils->dsi_dcs_read_lcm_reg_v2 = DSI_dcs_read_lcm_reg_v2_wrapper_DSI0;
 		utils->dsi_set_cmdq_V22 = DSI_set_cmdq_V2_DSI0;
 		utils->dsi_set_cmdq_V11 = DSI_set_cmdq_V11_wrapper_DSI0;
@@ -4526,6 +4532,98 @@ int ddp_dsi_dump(enum DISP_MODULE_ENUM module, int level)
 	DSI_DumpRegisters(module, level);
 
 	return 0;
+}
+
+int ddp_dsi_read_lcm_register_cmdq(enum DISP_MODULE_ENUM module,
+	cmdqBackupSlotHandle *read_Slot,
+	struct cmdqRecStruct *cmdq_trigger_handle,
+	struct ddp_lcm_read_cmd_table *read_table)
+{
+	int ret = 0;
+	int i = 0;
+	int dsi_i = 0;
+
+	struct DSI_T0_INS t0;
+
+	dsi_i = DSI_MODULE_to_ID(module);
+
+	if (dsi_i != 0)
+		DISPERR("[DSI]should use dsi0\n");
+
+	if (*read_Slot == 0) {
+		ret = -1;
+		DISPERR("[DSI]alloc cmdq slot fail\n");
+		return ret;
+	}
+
+	/* enable dsi interrupt: RD_RDY/CMD_DONE (need do this here?) */
+	DSI_OUTREGBIT(cmdq_trigger_handle,
+		struct DSI_INT_ENABLE_REG, DSI_REG[dsi_i]->DSI_INTEN,
+			RD_RDY, 1);
+	DSI_OUTREGBIT(cmdq_trigger_handle,
+		struct DSI_INT_ENABLE_REG, DSI_REG[dsi_i]->DSI_INTEN,
+			CMD_DONE, 1);
+
+	for (i = 0; i < 3; i++) {
+		/* 0. send read lcm command(short packet) */
+		t0.CONFG = 0x04;	/* /BTA */
+		t0.Data0 = read_table->cmd[i];
+		/* / 0xB0 is used to distinguish DCS cmd */
+		/* or Gerneric cmd, is that Right??? */
+		t0.Data_ID =
+			(t0.Data0 < 0xB0) ?
+			DSI_DCS_READ_PACKET_ID :
+			DSI_GERNERIC_READ_LONG_PACKET_ID;
+		t0.Data1 = 0;
+
+		/* write DSI CMDQ */
+		DSI_OUTREG32(cmdq_trigger_handle, &DSI_CMDQ_REG[dsi_i]->data[0],
+				    0x00013700);
+		DSI_OUTREG32(cmdq_trigger_handle, &DSI_CMDQ_REG[dsi_i]->data[1],
+				     AS_UINT32(&t0));
+		DSI_OUTREG32(cmdq_trigger_handle,
+			&DSI_REG[dsi_i]->DSI_CMDQ_SIZE, 2);
+
+		/* start DSI */
+		DSI_OUTREG32(cmdq_trigger_handle,
+			&DSI_REG[dsi_i]->DSI_START, 0);
+		DSI_OUTREG32(cmdq_trigger_handle,
+			&DSI_REG[dsi_i]->DSI_START, 1);
+
+		/* 1. wait DSI RD_RDY(must clear,*/
+		/* in case of cpu RD_RDY interrupt handler) */
+		if (dsi_i == 0) {
+			DSI_POLLREG32(cmdq_trigger_handle,
+				&DSI_REG[dsi_i]->DSI_INTSTA, 0x00000001, 0x1);
+			DSI_OUTREGBIT(cmdq_trigger_handle,
+				struct DSI_INT_STATUS_REG,
+				DSI_REG[dsi_i]->DSI_INTSTA,
+				RD_RDY, 0x00000000);
+		}
+		/* 2. save RX data */
+		if (*read_Slot && dsi_i == 0) {
+			DSI_BACKUPREG32(cmdq_trigger_handle,
+						*read_Slot, 2*i,
+						&DSI_REG[dsi_i]->DSI_RX_DATA0);
+			DSI_BACKUPREG32(cmdq_trigger_handle,
+						*read_Slot, 2*i+1,
+						&DSI_REG[dsi_i]->DSI_RX_DATA1);
+		}
+
+		/* 3. write RX_RACK */
+		DSI_OUTREGBIT(cmdq_trigger_handle,
+			struct DSI_RACK_REG, DSI_REG[dsi_i]->DSI_RACK,
+				    DSI_RACK, 1);
+
+		/* 4. polling not busy(no need clear) */
+		if (dsi_i == 0) {
+			DSI_POLLREG32(cmdq_trigger_handle,
+				&DSI_REG[dsi_i]->DSI_INTSTA,
+				0x80000000, 0);
+		}
+		/* loop: 0~2*/
+	}
+	return ret;
 }
 
 int ddp_dsi_build_cmdq(enum DISP_MODULE_ENUM module, void *cmdq_trigger_handle, enum CMDQ_STATE state)

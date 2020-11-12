@@ -476,9 +476,12 @@ static struct SV_LOG_STR gSvLog[WPE_IRQ_TYPE_AMOUNT];
 			avaLen = str_leng - 1;\
 			ptr = pDes = (char *)&(pSrc->_str[ppb][logT][pSrc->_cnt[ppb][logT]]);\
 			ptr2 = &(pSrc->_cnt[ppb][logT]);\
-			snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__);   \
-			while (*ptr++ != '\0') {\
-				(*ptr2)++;\
+			if (snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__) < 0)\
+				LOG_ERR("snprintf fail");\
+			else {\
+				while (*ptr++ != '\0') {\
+					(*ptr2)++;\
+				} \
 			} \
 		} \
 	} \
@@ -490,7 +493,7 @@ static struct SV_LOG_STR gSvLog[WPE_IRQ_TYPE_AMOUNT];
 	struct SV_LOG_STR *pSrc = &gSvLog[irq];\
 	char *ptr;\
 	unsigned int i;\
-	signed int ppb = 0;\
+	unsigned int ppb = 0;\
 	signed int logT = 0;\
 	if (ppb_in > 1) {\
 		ppb = 1;\
@@ -1340,7 +1343,8 @@ static bool ConfigWPERequest(signed int ReqIdx)
 	unsigned int j;
 	unsigned long flags;	/* old: MUINT32 flags; *//* FIX to avoid build warning */
 
-
+	if (ReqIdx < 0)
+		return MFALSE;
 	spin_lock_irqsave(&(WPEInfo.SpinLockIrq[WPE_IRQ_TYPE_INT_WPE_ST]), flags);
 	if (g_WPE_ReqRing.WPEReq_Struct[ReqIdx].State == WPE_REQUEST_STATE_PENDING) {
 		g_WPE_ReqRing.WPEReq_Struct[ReqIdx].State = WPE_REQUEST_STATE_RUNNING;
@@ -3067,7 +3071,8 @@ static inline unsigned int WPE_GetFrameState(signed int WPEReadIdx)
 	unsigned int ret = 0;
 	/*unsigned long flags;*/
 	LOG_DBG("WPE:WPE_GetFrameState\n");
-
+	if (WPEReadIdx < 0)
+		return 1;
 	/*spin_lock_irqsave(&(WPEInfo.SpinLockIrq[WPE_IRQ_TYPE_INT_WPE_ST]), flags);*/
 	if (g_WPE_ReqRing.WPEReq_Struct[WPEReadIdx].State == WPE_REQUEST_STATE_PENDING ||
 	    g_WPE_ReqRing.WPEReq_Struct[WPEReadIdx].State == WPE_REQUEST_STATE_RUNNING) {
@@ -3116,6 +3121,11 @@ static long WPE_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 			current->pid, current->tgid);
 		return -EFAULT;
 	}
+	if (g_WPE_ReqRing.ReadIdx < 0 || g_WPE_ReqRing.WriteIdx < 0) {
+		LOG_ERR("g_WPE_ReqRing index error");
+		return -EFAULT;
+	}
+
 	/*  */
 	pUserInfo = (struct WPE_USER_INFO_STRUCT *) (pFile->private_data);
 	/*  */
@@ -4761,7 +4771,9 @@ static ssize_t wpe_reg_write(struct file *file, const char __user *buffer, size_
 	if (WPEInfo.UserCount <= 0)
 		return 0;
 
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+	len = (sizeof(desc) - 1);
+	if (count < len && count >= 0)
+		len = count;
 	if (copy_from_user(desc, buffer, len))
 		return 0;
 

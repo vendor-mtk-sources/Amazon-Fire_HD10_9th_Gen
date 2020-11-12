@@ -73,6 +73,9 @@
 bool success_Flag;
 #endif /* CONFIG_CUSTOM_KERNEL_ACCELEROMETER_MODULE */
 
+/* default set to 2g */
+static u8 range_def = STK8BAXX_RANGESEL_DEF;
+
 /* ODR: 31.25, 62.5, 125 */
 const int STK8BAXX_SAMPLE_TIME[] = {
 	32000,
@@ -141,9 +144,6 @@ struct stk8baxx_data {
 	struct delayed_work         sig_delaywork;
 	/* sig delay work for int1. */
 #endif /* STK_SIG_MOTION */
-	struct delayed_work         accel_delaywork;
-	struct hrtimer              accel_timer;
-	ktime_t                     poll_delay;
 #endif /* INTERRUPT_MODE */
 #ifdef STK_CHECK_CODE
 	int                         cc_count;
@@ -445,9 +445,6 @@ static void stk_set_enable(struct stk8baxx_data *stk, char en)
 		if (stk_change_power_mode(stk, STK8BAXX_PWMD_NORMAL))
 			return;
 
-#ifndef INTERRUPT_MODE /* polling mode */
-		hrtimer_start(&stk->accel_timer, stk->poll_delay, HRTIMER_MODE_REL);
-#endif /* no INTERRUPT_MODE */
 #ifdef STK_CHECK_CODE
 		stk->cc_count = 0;
 		stk->cc_status = STK_CCSTATUS_NORMAL;
@@ -456,9 +453,6 @@ static void stk_set_enable(struct stk8baxx_data *stk, char en)
 		if (stk_change_power_mode(stk, STK8BAXX_PWMD_SUSPEND))
 			return;
 
-#ifndef INTERRUPT_MODE /* polling mode */
-		hrtimer_cancel(&stk->accel_timer);
-#endif /* no INTERRUPT_MODE */
 	}
 
 	atomic_set(&stk->enabled, en);
@@ -527,10 +521,6 @@ static int stk_set_delay(struct stk8baxx_data *stk, int delay_us)
 	if (enable)
 		stk_set_enable(stk, 1);
 
-#ifndef INTERRUPT_MODE /* polling mode */
-	stk->poll_delay = ns_to_ktime(
-	STK8BAXX_SAMPLE_TIME[sr_no - STK8BAXX_SPTIME_BASE] * NSEC_PER_USEC);
-#endif /* no INTERRUPT_MODE */
 	return error;
 }
 
@@ -760,7 +750,7 @@ static char stk_testOffsetNoise(struct stk8baxx_data *stk)
 	if (stk8baxx_reg_write(stk, STK8BAXX_REG_BWSEL, 0x0B)) /* ODR = 125Hz */
 		return -1;
 
-	if (stk_range_selection(stk, STK8BAXX_RANGESEL_2G))
+	if (stk_range_selection(stk, range_def))
 		return -1;
 
 	thresholdOffset = stk_selftest_offset_factor(stk->sensitivity);
@@ -819,6 +809,41 @@ static char stk_testOffsetNoise(struct stk8baxx_data *stk)
 	else
 		atomic_set(&stk->selftest, localResult);
 	return 0;
+}
+
+/**
+ * @brief: read range from device tree.
+ *         no define dts will return 2G setting.
+ *
+ * @param[in] struct device_node *node
+ *
+ * @return: range 2G: 0x03
+ *                4G: 0x05
+ *                8G: 0x08
+ */
+static u8 get_range(struct device_node *node)
+{
+	u32 buf_range[] = {0};
+	int ret = 0;
+
+	ret = of_property_read_u32_array(node, "range", buf_range,
+	ARRAY_SIZE(buf_range));
+
+	if (ret) {
+		STK_ACC_ERR("get dts node range fail! return range to 2G!\n");
+		return STK8BAXX_RANGESEL_2G;
+	}
+
+	STK_ACC_LOG("get range from dts %d.\n", buf_range[0]);
+
+	switch (buf_range[0]) {
+	case 4:
+		return STK8BAXX_RANGESEL_4G;
+	case 8:
+		return STK8BAXX_RANGESEL_8G;
+	default:
+		return STK8BAXX_RANGESEL_2G;
+	}
 }
 
 /**
@@ -963,7 +988,7 @@ static int stk_reg_init(struct stk8baxx_data *stk)
 		return error;
 
 	/* According to STK_DEF_DYNAMIC_RANGE */
-	error = stk_range_selection(stk, STK8BAXX_RANGESEL_DEF);
+	error = stk_range_selection(stk, range_def);
 
 	if (error)
 		return error;
@@ -2303,6 +2328,7 @@ static void stk_create_attr_exit(struct device_driver *driver)
 		driver_remove_file(driver, stk_attr_list[i]);
 }
 
+#ifdef INTERRUPT_MODE
 /**
  * @brief:
  */
@@ -2320,7 +2346,6 @@ static void stk_report_accel_data(struct stk8baxx_data *stk)
 
 }
 
-#ifdef INTERRUPT_MODE
 #ifdef STK_SIG_MOTION
 /**
  * @brief:
@@ -2502,119 +2527,6 @@ static irqreturn_t stk_sig_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 #endif /* STK_SIG_MOTION */
-
-/**
- * @brief: Queue delayed_work list.
- *              ???????
- *
- * @param[in] work: struct work_struct *
- */
-static void stk_accel_delay_work(struct work_struct *work)
-{
-	struct stk8baxx_data *stk =
-		container_of(work, struct stk8baxx_data, accel_delaywork.work);
-	bool enable = true;
-
-	if (!atomic_read(&stk->enabled)) {
-		stk_set_enable(stk, 1);
-		enable = false;
-	}
-
-	stk_read_accel_data(stk);
-	stk_report_accel_data(stk);
-
-	if (!enable)
-		stk_set_enable(stk, 0);
-}
-
-/**
- * @brief: This function will send delayed_work to queue.
- *          This function will be called regularly with period:
- *          stk8baxx_data.poll_delay.
- *
- * @param[in] timer: struct hrtimer *
- *
- * @return: HRTIMER_RESTART.
- */
-static enum hrtimer_restart stk_accel_timer_func(struct hrtimer *timer)
-{
-	struct stk8baxx_data *stk =
-		container_of(timer, struct stk8baxx_data, accel_timer);
-	schedule_delayed_work(&stk->accel_delaywork, 0);
-	hrtimer_forward_now(&stk->accel_timer, stk->poll_delay);
-	return HRTIMER_RESTART;
-}
-
-static int stk_polling_mode_setup(struct stk8baxx_data *stk)
-{
-	int error = 0;
-#ifdef STK_SIG_MOTION
-	struct device_node *stk_node;
-	u32 ints = 0;
-
-	INIT_DELAYED_WORK(&stk->sig_delaywork, stk_sig_irq_delay_work);
-	stk_node = of_find_compatible_node(NULL, NULL, "mediatek, ACCEL-eint");
-
-	if (stk_node) {
-		of_property_read_u32(stk_node, "interrupts", &ints);
-		/* SIGMOTION */
-		stk->interrupt_int1_pin = ints;
-		gpio_direction_input(stk->interrupt_int1_pin);
-		error = gpio_to_irq(stk->interrupt_int1_pin);
-
-		if (error < 0) {
-			STK_ACC_ERR("gpio_to_irq failed");
-			error = -EINVAL;
-			goto exit_gpio_request_1;
-		}
-
-		stk->irq1 = error;
-		STK_ACC_LOG("irq #=%d, interrupt pin=%d\n", stk->irq1, stk->interrupt_int1_pin);
-		error = request_any_context_irq(stk->irq1, stk_sig_handler,
-						IRQF_TRIGGER_RISING, STK8BAXX_IRQ_INT1_NAME, stk);
-
-		if (error < 0) {
-			STK_ACC_ERR("request_any_context_irq(%d) failed for %d", stk->irq1, error);
-			goto exit_gpio_to_irq_1;
-		}
-	} else {
-		STK_ACC_ERR("Null device node of ACCEL-eint");
-		return -EINVAL;
-		goto exit_gpio_request_1;
-	}
-#endif /* STK_SIG_MOTION */
-
-	/* polling accel data */
-	INIT_DELAYED_WORK(&stk->accel_delaywork, stk_accel_delay_work);
-	hrtimer_init(&stk->accel_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	stk->poll_delay = ns_to_ktime(
-			  STK8BAXX_SAMPLE_TIME[STK8BAXX_BWSEL_INIT_ODR - STK8BAXX_SPTIME_BASE]
-			  * NSEC_PER_USEC);
-	stk->accel_timer.function = stk_accel_timer_func;
-	return 0;
-#ifdef STK_SIG_MOTION
-	free_irq(stk->irq1, stk);
-exit_gpio_to_irq_1:
-	gpio_free(stk->interrupt_int1_pin);
-exit_gpio_request_1:
-	cancel_delayed_work_sync(&stk->sig_delaywork);
-#endif /* STK_SIG_MOTION */
-	return error;
-}
-
-/**
- * @brief:
- */
-static void stk_polling_mode_exit(struct stk8baxx_data *stk)
-{
-	hrtimer_try_to_cancel(&stk->accel_timer);
-	cancel_delayed_work_sync(&stk->accel_delaywork);
-#ifdef STK_SIG_MOTION
-	free_irq(stk->irq1, stk);
-	gpio_free(stk->interrupt_int1_pin);
-	cancel_delayed_work_sync(&stk->sig_delaywork);
-#endif /* STK_SIG_MOTION */
-}
 #endif /* INTERRUPT_MODE */
 
 /**
@@ -3346,14 +3258,9 @@ static int stk8baxx_i2c_probe(struct i2c_client *client, const struct i2c_device
 
 	if (error < 0)
 		goto err_mutex_destory;
-
-#else /* no INTERRUPT_MODE */
-	error = stk_polling_mode_setup(stk);
-
-	if (error < 0)
-		goto err_mutex_destory;
-
 #endif /* INTERRUPT_MODE */
+
+	range_def = get_range(client->dev.of_node);
 
 	error = stk_reg_init(stk);
 
@@ -3424,8 +3331,6 @@ exit_misc_error:
 exit_stk_init_error:
 #ifdef INTERRUPT_MODE
 	stk_interrupt_mode_exit(stk);
-#else /* no INTERRUPT_MODE */
-	stk_polling_mode_exit(stk);
 #endif /* INTERRUPT_MODE */
 err_mutex_destory:
 	mutex_destroy(&stk->reg_lock);
@@ -3447,8 +3352,6 @@ static int stk8baxx_i2c_remove(struct i2c_client *client)
 	misc_deregister(&stk_miscdevice);
 #ifdef INTERRUPT_MODE
 	stk_interrupt_mode_exit(stk);
-#else /* no INTERRUPT_MODE */
-	stk_polling_mode_exit(stk);
 #endif /* INTERRUPT_MODE */
 	mutex_destroy(&stk->reg_lock);
 	kfree(stk);

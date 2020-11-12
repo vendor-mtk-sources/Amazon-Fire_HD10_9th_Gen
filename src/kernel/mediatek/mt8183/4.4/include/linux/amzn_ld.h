@@ -5,6 +5,9 @@
 #include <linux/metricslog.h>
 #endif
 
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
 
 enum ld_state {
 	DRY = 0,
@@ -68,7 +71,7 @@ struct ld_data {
 	int state;
 };
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 #define BATTERY_METRICS_BUFF_SIZE 512
 char g_m_buf[BATTERY_METRICS_BUFF_SIZE];
 

@@ -149,6 +149,7 @@ struct charger_ops {
 	int (*force_enable_wpc_charge)(struct charger_device *dev, bool en);
 	int (*get_temp)(struct charger_device *dev);
 	int (*set_vout_en)(struct charger_device *dev, bool en);
+	int (*set_wpc_en)(struct charger_device *dev, bool en);
 };
 
 static inline void *charger_dev_get_drvdata(const struct charger_device *charger_dev)
@@ -216,6 +217,8 @@ extern int wireless_charger_dev_get_online(struct charger_device *chg_dev, bool 
 extern int wireless_charger_dev_do_algorithm(struct charger_device *chg_dev, void *data);
 extern int wireless_charger_dev_force_en_charge(struct charger_device *chg_dev, bool en);
 extern int wireless_charger_dev_set_vout_en(struct charger_device *chg_dev, bool en);
+extern int wireless_charger_dev_set_wpc_en(
+	struct charger_device *chg_dev, bool en);
 
 /* PE */
 extern int charger_dev_send_ta_current_pattern(struct charger_device *charger_dev, bool is_increase);

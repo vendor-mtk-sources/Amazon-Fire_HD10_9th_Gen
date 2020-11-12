@@ -528,7 +528,7 @@ int mtk_cfg80211_vendor_set_config(struct wiphy *wiphy, struct wireless_dev *wde
 						(u4ArySize <= GSCAN_MAX_BUCKETS)
 						? u4ArySize : GSCAN_MAX_BUCKETS;
 				len_basic += NLA_ALIGN(attr[k]->nla_len);
-				DBGLOG(REQ, TRACE, "attr=0x%x, num_buckets=%d nla_len=%d,\r\n",
+				DBGLOG(REQ, TRACE, "attr=0x%x, num_buckets=%d nla_len=%d,\n",
 				       *(UINT_32 *) attr[k], prWifiScanCmd->num_buckets, attr[k]->nla_len);
 				break;
 			}
@@ -581,14 +581,14 @@ int mtk_cfg80211_vendor_set_config(struct wiphy *wiphy, struct wireless_dev *wde
 			case GSCAN_ATTRIBUTE_BUCKET_NUM_CHANNELS:
 				prWifiScanCmd->buckets[i].num_channels = nla_get_u32(attr[k]);
 				len_bucket += NLA_ALIGN(attr[k]->nla_len);
-				DBGLOG(REQ, TRACE, "bucket%d: attr=0x%x, num_channels=%d nla_len=%d,\r\n",
+				DBGLOG(REQ, TRACE, "bucket%d: attr=0x%x, num_channels=%d nla_len=%d,\n",
 				       i, *(UINT_32 *) attr[k], nla_get_u32(attr[k]), attr[k]->nla_len);
 				break;
 			}
 		}
 		pbucket = (struct nlattr *)((UINT_8 *) pbucket + NLA_HDRLEN);
 		/* request.attr_start(i) as nested attribute */
-		DBGLOG(REQ, TRACE, "+++pure bucket size=%d pbucket=%p\r\n", len_bucket, pbucket);
+		DBGLOG(REQ, TRACE, "+++pure bucket size=%d pbucket=%p\n", len_bucket, pbucket);
 		pbucket = (struct nlattr *)((UINT_8 *) pbucket + len_bucket);
 		/* pure bucket payload, not include channels */
 
@@ -599,7 +599,7 @@ int mtk_cfg80211_vendor_set_config(struct wiphy *wiphy, struct wireless_dev *wde
 			prWifiScanCmd->buckets[i].channels[j].channel = nla_get_u32(pchannel);
 			len_channel = NLA_ALIGN(pchannel->nla_len);
 			DBGLOG(REQ, TRACE,
-				"attr=0x%x, channel=%d,\r\n", *(UINT_32 *) pchannel, nla_get_u32(pchannel));
+				"attr=0x%x, channel=%d,\n", *(UINT_32 *) pchannel, nla_get_u32(pchannel));
 
 			pchannel = (struct nlattr *)((UINT_8 *) pchannel + len_channel);
 		}
@@ -755,7 +755,7 @@ int mtk_cfg80211_vendor_set_significant_change(struct wiphy *wiphy, struct wirel
 			case GSCAN_ATTRIBUTE_NUM_AP:
 				prWifiChangeCmd->num_ap = nla_get_u16(attr[k]);
 				len_basic += NLA_ALIGN(attr[k]->nla_len);
-				DBGLOG(REQ, TRACE, "attr=0x%x, num_ap=%d nla_len=%d,\r\n",
+				DBGLOG(REQ, TRACE, "attr=0x%x, num_ap=%d nla_len=%d,\n",
 				       *(UINT_32 *) attr[k], prWifiChangeCmd->num_ap, attr[k]->nla_len);
 				break;
 			case GSCAN_ATTRIBUTE_SIGNIFICANT_CHANGE_FLUSH:
@@ -870,7 +870,7 @@ int mtk_cfg80211_vendor_set_hotlist(struct wiphy *wiphy, struct wireless_dev *wd
 			case GSCAN_ATTRIBUTE_NUM_AP:
 				prWifiHotlistCmd->num_ap = nla_get_u16(attr[k]);
 				len_basic += NLA_ALIGN(attr[k]->nla_len);
-				DBGLOG(REQ, TRACE, "attr=0x%x, num_ap=%d nla_len=%d,\r\n",
+				DBGLOG(REQ, TRACE, "attr=0x%x, num_ap=%d nla_len=%d\n",
 				       *(UINT_32 *) attr[k], prWifiHotlistCmd->num_ap, attr[k]->nla_len);
 				break;
 			case GSCAN_ATTRIBUTE_HOTLIST_FLUSH:
@@ -881,7 +881,7 @@ int mtk_cfg80211_vendor_set_hotlist(struct wiphy *wiphy, struct wireless_dev *wd
 		}
 	}
 	paplist = (struct nlattr *)((UINT_8 *) data + len_basic);
-	DBGLOG(REQ, INFO, "+++basic attribute size=%d flush=%d\r\n", len_basic, flush);
+	DBGLOG(REQ, INFO, "+++basic attribute size=%d flush=%d\n", len_basic, flush);
 
 	if (paplist->nla_type == GSCAN_ATTRIBUTE_HOTLIST_BSSIDS)
 		paplist = (struct nlattr *)((UINT_8 *) paplist + NLA_HDRLEN);

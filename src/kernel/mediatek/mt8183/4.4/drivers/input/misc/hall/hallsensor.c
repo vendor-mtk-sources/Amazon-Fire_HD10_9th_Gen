@@ -35,6 +35,11 @@
 #define METRICS_STR_LEN 128
 #endif
 
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#define METRICS_STR_LEN 128
+#endif
+
 #define DELAY_VALUE 50
 #define TIMEOUT_VALUE 100
 
@@ -98,7 +103,7 @@ static void remove_hall_proc_file(void)
 static void hall_work_func(struct work_struct *work)
 {
 	struct hall_priv *priv = container_of(work, struct hall_priv, work);
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	char metrics_log[METRICS_STR_LEN];
 #endif
 	struct input_dev *input = priv->input;
@@ -112,7 +117,7 @@ static void hall_work_func(struct work_struct *work)
 
 	pr_info("%s: cover state: %s\n", __func__, priv->cover == COVER_OPENED ? "OPENED" : "CLOSED");
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	/* Log in metrics */
 	//TODO DISPLAY is useless for hall sensor under current implementation
 	//Revise metrics format then stop logging fake display state.

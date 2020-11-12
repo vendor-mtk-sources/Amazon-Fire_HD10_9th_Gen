@@ -37,6 +37,7 @@ extern void mt_irq_set_polarity(unsigned int irq, unsigned int polarity);
 /*******************************************************************************
  *
  ********************************************************************************/
+#define ISP_USENAME_SIZE 32
 #define ISP_DEV_MAJOR_NUMBER    251
 #define ISP_MAGIC               'k'
 
@@ -151,7 +152,7 @@ struct ISP_WAIT_IRQ_STRUCT {
 
 struct ISP_REGISTER_USERKEY_STRUCT {
 	int userKey;
-	char userName[32]; /* this size must the same as the icamiopipe api - registerIrq(...) */
+	char userName[ISP_USENAME_SIZE]; /* this size must the same as the icamiopipe api - registerIrq(...) */
 };
 
 struct ISP_CLEAR_IRQ_ST {

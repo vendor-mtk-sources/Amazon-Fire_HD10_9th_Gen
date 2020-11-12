@@ -33,6 +33,18 @@
 #include <tmp_bts.h>
 #include <linux/slab.h>
 
+#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
+#include <linux/sign_of_life.h>
+#endif
+
+#ifdef CONFIG_AMZN_SIGN_OF_LIFE
+#include <linux/amzn_sign_of_life.h>
+#endif
+
+#if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
+#include <linux/thermal_framework.h>
+#endif
+
 /*=============================================================
  *Weak functions
  *=============================================================
@@ -779,6 +791,31 @@ static int mtkts_btsmdpa_get_crit_temp(struct thermal_zone_device *thermal,
 	return 0;
 }
 
+#if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
+static int mtkts_btsmdpa_thermal_notify(struct thermal_zone_device *thermal,
+					int trip, enum thermal_trip_type type)
+{
+	if (type == THERMAL_TRIP_CRITICAL) {
+#if defined(CONFIG_AMAZON_SIGN_OF_LIFE) || defined(CONFIG_AMZN_SIGN_OF_LIFE)
+		pr_err("[%s][%s]type:[%s] Thermal shutdown mtktsbtsmdpa[%d], current temp=%d, trip=%d, trip_temp=%d\n",
+			__func__, dev_name(&thermal->device), thermal->type, g_RAP_ADC_channel,
+			thermal->temperature, trip, trip_temp[trip]);
+		life_cycle_set_thermal_shutdown_reason(THERMAL_SHUTDOWN_REASON_BTS);
+#endif
+
+		pr_err("%s: thermal_shutdown notify\n", __func__);
+		last_kmsg_thermal_shutdown();
+		pr_err("%s: thermal_shutdown notify end\n", __func__);
+
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+		set_shutdown_enable_dcap(&thermal->device);
+#endif
+	}
+
+	return 0;
+}
+#endif
+
 /* bind callback functions to thermalzone */
 static struct thermal_zone_device_ops mtkts_btsmdpa_dev_ops = {
 	.bind = mtkts_btsmdpa_bind,
@@ -789,6 +826,9 @@ static struct thermal_zone_device_ops mtkts_btsmdpa_dev_ops = {
 	.get_trip_type = mtkts_btsmdpa_get_trip_type,
 	.get_trip_temp = mtkts_btsmdpa_get_trip_temp,
 	.get_crit_temp = mtkts_btsmdpa_get_crit_temp,
+#if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
+	.notify = mtkts_btsmdpa_thermal_notify,
+#endif
 };
 
 

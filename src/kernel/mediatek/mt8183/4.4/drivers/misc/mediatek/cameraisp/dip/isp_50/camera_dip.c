@@ -642,9 +642,12 @@ static struct SV_LOG_STR gSvLog[DIP_IRQ_TYPE_AMOUNT];
 			avaLen = str_leng - 1;\
 			ptr = pDes = (char *)&(pSrc->_str[ppb][logT][pSrc->_cnt[ppb][logT]]);\
 			ptr2 = &(pSrc->_cnt[ppb][logT]);\
-			snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__);   \
-			while (*ptr++ != '\0') {\
-				(*ptr2)++;\
+			if (snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__) < 0)\
+				LOG_ERR("snprintf fail");\
+			else {\
+				while (*ptr++ != '\0') {\
+					(*ptr2)++;\
+				} \
 			} \
 		} \
 	} \
@@ -658,7 +661,7 @@ static struct SV_LOG_STR gSvLog[DIP_IRQ_TYPE_AMOUNT];
 		struct SV_LOG_STR *pSrc = &gSvLog[irq];\
 		char *ptr;\
 		unsigned int i;\
-		signed int ppb = 0;\
+		unsigned int ppb = 0;\
 		signed int logT = 0;\
 		if (ppb_in > 1) {\
 			ppb = 1;\
@@ -1764,6 +1767,8 @@ enum DIP_P2_BUFQUE_LIST_TAG listTag)
 	int i = 0;
 	enum DIP_P2_BUF_STATE_ENUM cIdxSts = DIP_P2_BUF_STATE_NONE;
 
+	if (property < 0)
+		return -EINVAL;
 	switch (listTag) {
 	case DIP_P2_BUFQUE_LIST_TAG_UNIT:
 		/* [1] check global pointer current sts */
@@ -1858,6 +1863,8 @@ enum DIP_P2_BUFQUE_LIST_TAG listTag, signed int idx)
 	signed int cnt = 0;
 	int tmpIdx = 0;
 
+	if (property < 0)
+		return -EINVAL;
 	switch (listTag) {
 	case DIP_P2_BUFQUE_LIST_TAG_PACKAGE:
 		tmpIdx = P2_FramePack_List_Idx[property].start;
@@ -1957,9 +1964,10 @@ static signed int DIP_P2_BufQue_GetMatchIdx(struct  DIP_P2_BUFQUE_STRUCT param,
 	int i = 0;
 	int property;
 
-	if (param.property >= DIP_P2_BUFQUE_PROPERTY_NUM) {
+	if (param.property >= DIP_P2_BUFQUE_PROPERTY_NUM ||
+			param.property < 0) {
 		LOG_ERR("property err(%d)\n", param.property);
-		return idx;
+		return -EINVAL;
 	}
 	property = param.property;
 
@@ -2184,10 +2192,10 @@ static signed int DIP_P2_BufQue_CTRL_FUNC(struct DIP_P2_BUFQUE_STRUCT param)
 	signed int restTime = 0;
 	int property;
 
-	if (param.property >= DIP_P2_BUFQUE_PROPERTY_NUM) {
+	if (param.property >= DIP_P2_BUFQUE_PROPERTY_NUM ||
+			param.property < 0) {
 		LOG_ERR("property err(%d)\n", param.property);
-		ret = -EFAULT;
-		return ret;
+		return -EINVAL;
 	}
 	property = param.property;
 
@@ -2393,6 +2401,12 @@ static signed int DIP_P2_BufQue_CTRL_FUNC(struct DIP_P2_BUFQUE_STRUCT param)
 				   P2WaitQueueHead_WaitFrameEQDforDQ,
 				   DIP_P2_BufQue_WaitEventState(param, DIP_P2_BUFQUE_MATCH_TYPE_WAITFMEQD, &idx),
 				   DIP_UsToJiffies(15 * 1000000)); /* wait 15s to get paired frame */
+
+		if (idx < 0) {
+			LOG_ERR("DIP_P2_BUFQUE_MATCH_TYPE_WAITFMEQD fail");
+			ret =  -EFAULT;
+			return ret;
+		}
 		if (restTime == 0) {
 			LOG_ERR("could not find match buffer restTime(%d), pty/pID/cID (%d/0x%x/0x%x),idx(%d)",
 			restTime, property, param.processID, param.callerID, idx);

@@ -373,6 +373,24 @@ struct ddp_fb_info {
 	unsigned int fb_size;
 };
 
+struct rx_data {
+	unsigned char byte0;
+	unsigned char byte1;
+	unsigned char byte2;
+	unsigned char byte3;
+};
+
+struct ddp_lcm_read_cmd_table {
+	unsigned char cmd[3];
+	struct rx_data data[3];
+};
+
+struct ddp_lcm_write_cmd_table {
+	unsigned char cmd;
+	unsigned char count;
+	unsigned char para_list[64];
+};
+
 typedef int (*ddp_module_notify)(enum DISP_MODULE_ENUM, enum DISP_PATH_EVENT);
 
 struct DDP_MODULE_DRIVER {

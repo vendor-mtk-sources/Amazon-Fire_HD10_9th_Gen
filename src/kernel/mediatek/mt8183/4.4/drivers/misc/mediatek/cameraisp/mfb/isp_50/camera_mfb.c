@@ -428,7 +428,8 @@ static struct SV_LOG_STR gSvLog[MFB_IRQ_TYPE_AMOUNT];
 		str_leng = 0;\
 	} \
 	ptr = pDes = (char *)&(gSvLog[irq]._str[ppb][logT][gSvLog[irq]._cnt[ppb][logT]]);    \
-	sprintf((char *)(pDes), fmt, ##__VA_ARGS__);   \
+	if (sprintf((char *)(pDes), fmt, ##__VA_ARGS__) < 0)\
+		log_err("sprintf fail");\
 	if ('\0' != gSvLog[irq]._str[ppb][logT][str_leng - 1]) {\
 		log_err("log str over flow(%d)", irq);\
 	} \
@@ -446,7 +447,7 @@ static struct SV_LOG_STR gSvLog[MFB_IRQ_TYPE_AMOUNT];
 	struct SV_LOG_STR *pSrc = &gSvLog[irq];\
 	char *ptr;\
 	unsigned int i;\
-	signed int ppb = 0;\
+	unsigned int ppb = 0;\
 	signed int logT = 0;\
 	if (ppb_in > 1) {\
 		ppb = 1;\
@@ -926,6 +927,8 @@ static bool ConfigMFBRequest(signed int ReqIdx)
 	unsigned int j;
 	unsigned long flags; /* old: unsigned int flags;*//* FIX to avoid build warning */
 
+	if (ReqIdx < 0)
+		return MFALSE;
 
 	spin_lock_irqsave(&(MFBInfo.SpinLockIrq[MFB_IRQ_TYPE_INT_MFB_ST]), flags);
 	if (g_MFB_ReqRing.MFBReq_Struct[ReqIdx].State == MFB_REQUEST_STATE_PENDING) {
@@ -2054,6 +2057,10 @@ static long MFB_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 	if (pFile->private_data == NULL) {
 		log_wrn("private_data is NULL,(process, pid, tgid)=(%s, %d, %d)", current->comm,
 			current->pid, current->tgid);
+		return -EFAULT;
+	}
+	if (g_MFB_ReqRing.ReadIdx < 0 || g_MFB_ReqRing.WriteIdx < 0) {
+		log_wrn("g_MFB_ReqRing index error\n");
 		return -EFAULT;
 	}
 	/*  */
@@ -3622,7 +3629,10 @@ static ssize_t mfb_reg_write(struct file *file, const char __user *buffer, size_
 	int addr = 0, val = 0;
 	long int tempval;
 
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+	len = (sizeof(desc) - 1);
+	if (count < len && count >= 0)
+		len = count;
+
 	if (copy_from_user(desc, buffer, len))
 		return 0;
 

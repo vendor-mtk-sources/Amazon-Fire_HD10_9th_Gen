@@ -26,6 +26,10 @@
 #ifdef CONFIG_AMAZON_METRICS_LOG
 #include <linux/metricslog.h>
 #endif
+
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
 #include "gt9xx.h"
 
 #define GOODIX_COORDS_ARR_SIZE	4
@@ -39,7 +43,7 @@ static const char *goodix_input_phys = "input/ts";
 struct i2c_client *i2c_connect_client;
 static struct proc_dir_entry *gtp_config_proc;
 static int gesture_wakeup_delayed; /*-1:no update, 0:disable, 1: enable */
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 static ktime_t g_ts_irq_in, g_ts_report;
 static char buffer[128];
 #endif
@@ -602,7 +606,7 @@ static void gtp_mt_slot_report(struct goodix_ts_data *ts, u8 touch_num,
 	input_sync(ts->input_dev);
 }
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 int charger_exist(void)
 {
 	int ret;
@@ -648,7 +652,7 @@ static void gtp_work_func(struct goodix_ts_data *ts)
 	s32 ret = -1;
 	static u8 pre_key;
 	struct goodix_point_t points[GTP_MAX_TOUCH_ID];
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	int charger_flag = 0;
 #endif
 	if (test_bit(PANEL_RESETTING, &ts->flags))
@@ -661,7 +665,7 @@ static void gtp_work_func(struct goodix_ts_data *ts)
 		ret =  gtp_gesture_handler(ts);
 		if (ret)
 			TP_LOGE("Failed handler gesture event %d\n", ret);
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		charger_flag = charger_exist();
 		if (charger_flag >= 0) {
 			snprintf(buffer, sizeof(buffer),
@@ -723,7 +727,7 @@ static void gtp_work_func(struct goodix_ts_data *ts)
 	else
 		gtp_type_a_report(ts, point_state & 0x0f, points);
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	if (g_debugfs_enable_latency_check) {
 		g_ts_report = ktime_get();
 		snprintf(buffer, sizeof(buffer),
@@ -763,7 +767,7 @@ static enum hrtimer_restart gtp_timer_handler(struct hrtimer *timer)
 static irqreturn_t gtp_irq_handler(int irq, void *dev_id)
 {
 	struct goodix_ts_data *ts = dev_id;
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	if (g_debugfs_enable_latency_check) {
 		g_ts_irq_in = ktime_get();
 		snprintf(buffer, sizeof(buffer),

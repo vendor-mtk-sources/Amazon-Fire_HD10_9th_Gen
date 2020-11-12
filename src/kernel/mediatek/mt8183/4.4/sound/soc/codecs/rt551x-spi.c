@@ -38,6 +38,10 @@
 #include  <linux/metricslog.h> //-- add include file for metrics logging through logcat_vital-->KDM
 #endif
 
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include  <linux/amzn_metricslog.h>
+#endif
+
 #include "rt551x-spi.h"
 #include "rt551x.h"
 #define SHIFT_SPI_READ_ALIGN 3
@@ -126,7 +130,7 @@ static void send_dsp_reset_event(struct rt551x_dsp *rt551x_dsp) {
 		pr_err("%s -- send dsp reset uevent!\n", __func__);
 		kobject_uevent_env(&rt551x_dsp->dev->kobj, KOBJ_CHANGE, reset_event);
 		rt551x_reset_duetoSPI();
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		log_counter_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel",
 			"RT551X_DSP_metrics_count","DSP_Reset", 1, "count", NULL, VITALS_NORMAL);
 
@@ -214,7 +218,7 @@ static void rt551x_spi_copy_work(struct work_struct *work)
 	size_t period_bytes, truncated_bytes = 0;
 	int had_reset_read_pointer = 0;
 	size_t bufsize_avaldata = 0;
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	ktime_t Current;
 #endif
 	mutex_lock(&rt551x_dsp->dma_lock);
@@ -305,7 +309,7 @@ static void rt551x_spi_copy_work(struct work_struct *work)
 		schedule_delayed_work(&rt551x_dsp->copy_work, msecs_to_jiffies(20));
 		if (rt551x_dsp->fgMetricLogPrint == false)
 		{
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 			rt551x_dsp->fgMetricLogPrint = true;
 			Current = ktime_get();
 			if (rt551x_dsp->dspStreamDuration >= MIN_SUSPEND_AUDIO_DURATION) {
@@ -342,7 +346,7 @@ static int rt551x_spi_pcm_open(struct snd_pcm_substream *substream)
 		rt551x_dsp_pointer->fgMetricLogPrint = false;
 		rt551x_dsp_pointer->StreamOpenTime = ktime_get();
 		rt551x_dsp_pointer->dspStreamDuration = 0;
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		log_counter_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel",
 			"RT551X_DSP_metrics_count","DSP_DATA_PROCESS_BEGIN", 1, "count", NULL, VITALS_NORMAL);
 #endif
@@ -374,7 +378,7 @@ static int rt551x_spi_hw_free(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct rt551x_dsp *rt551x_dsp =
 			snd_soc_platform_get_drvdata(rtd->platform);
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		ktime_t Current;
 #endif
 	mutex_lock(&rt551x_dsp->dma_lock);
@@ -386,7 +390,7 @@ static int rt551x_spi_hw_free(struct snd_pcm_substream *substream)
 	if (rt551x_dsp->fgMetricLogPrint == false)
 	{
 		rt551x_dsp->fgMetricLogPrint = true;
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		Current = ktime_get();
 		log_timer_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel",
 			"RT551X_DSP_metrics_time","DSP_DATA_CANCEL",

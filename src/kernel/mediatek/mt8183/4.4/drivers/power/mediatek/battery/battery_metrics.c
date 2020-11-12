@@ -9,7 +9,6 @@
 #include <linux/wait.h>
 #include <linux/slab.h>
 #include <linux/time.h>
-#include <linux/metricslog.h>
 #include <linux/power_supply.h>
 #include <mt-plat/charger_type.h>
 #include <mt-plat/mtk_battery.h>
@@ -17,11 +16,23 @@
 #ifdef CONFIG_AMAZON_SIGN_OF_LIFE
 #include <linux/sign_of_life.h>
 #endif
+
+#ifdef CONFIG_AMZN_SIGN_OF_LIFE
+#include <linux/amzn_sign_of_life.h>
+#endif
+
 #ifdef CONFIG_FB
 #include <linux/notifier.h>
 #include <linux/fb.h>
 #endif
 
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#endif
+
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
 
 #define BATTERY_METRICS_BUFF_SIZE 512
 char g_metrics_buf[BATTERY_METRICS_BUFF_SIZE];
@@ -161,7 +172,7 @@ int bat_metrics_chg_state(u32 chg_sts)
 int bat_metrics_critical_shutdown(void)
 {
 	bat_metrics_log("battery", "battery:def:critical_shutdown=1;CT;1:HI");
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
+#if defined(CONFIG_AMAZON_SIGN_OF_LIFE) || defined(CONFIG_AMZN_SIGN_OF_LIFE)
 	life_cycle_set_special_mode(LIFE_CYCLE_SMODE_LOW_BATTERY);
 #endif
 

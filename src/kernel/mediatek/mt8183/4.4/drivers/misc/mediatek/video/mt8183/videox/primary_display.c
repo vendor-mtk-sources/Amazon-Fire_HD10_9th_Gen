@@ -106,6 +106,18 @@
 
 #define FRM_UPDATE_SEQ_CACHE_NUM (DISP_INTERNAL_BUFFER_COUNT+1)
 
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#endif
+
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
+static char metric_buf[128];
+#endif
+
 static struct disp_internal_buffer_info *decouple_buffer_info[DISP_INTERNAL_BUFFER_COUNT];
 static struct disp_internal_buffer_info *freeze_buffer_info;
 static struct RDMA_CONFIG_STRUCT decouple_rdma_config;
@@ -8203,6 +8215,54 @@ int _set_backlight_by_cmdq(unsigned int level)
 	return ret;
 }
 
+
+int set_backlight_mode_by_cmdq(LCM_setting_table_V3 *para_tbl, unsigned int size,
+				  unsigned char force_update)
+{
+	int ret = 0;
+	struct cmdqRecStruct *cmdq_handle_backlight = NULL;
+
+	ret = cmdqRecCreate(CMDQ_SCENARIO_PRIMARY_DISP, &cmdq_handle_backlight);
+	DISPDBG("primary backlight mode, handle=%p\n", cmdq_handle_backlight);
+	if (ret) {
+		DISPPR_ERROR("fail to create primary cmdq handle for backlight\n");
+		return -1;
+	}
+
+	cmdqRecReset(cmdq_handle_backlight);
+	_cmdq_insert_wait_frame_done_token_mira(cmdq_handle_backlight);
+	DSI_set_cmdq_V3(DISP_MODULE_DSI0, cmdq_handle_backlight, para_tbl, size, force_update);
+	/*Async flush by cmdq*/
+	_cmdq_flush_config_handle_mira(cmdq_handle_backlight, 0);
+	DISPMSG("[BL]_set_backlight_mode_by_cmdq ret=%d\n", ret);
+
+	cmdqRecDestroy(cmdq_handle_backlight);
+	cmdq_handle_backlight = NULL;
+
+	return ret;
+}
+
+void primary_display_set_backlight_mode_by_cmdq(LCM_setting_table_V3 *para_tbl, unsigned int size,
+				  unsigned char force_update)
+{
+
+	DISPFUNC();
+
+	if (pgc->state == DISP_SLEPT) {
+		DISPPR_ERROR("Sleep State set backlight invald\n");
+	} else {
+		primary_display_idlemgr_kick(__func__, 0);
+		if (primary_display_cmdq_enabled()) {
+			set_backlight_mode_by_cmdq(para_tbl, size, force_update);
+		} else {
+			DSI_set_cmdq_V3(DISP_MODULE_DSI0, NULL, para_tbl, size, force_update);
+		}
+	}
+
+}
+
+
+
 int _set_backlight_by_cpu(unsigned int level)
 {
 	int ret = 0;
@@ -8450,7 +8510,12 @@ int primary_display_setbacklight_mode(unsigned int mode)
 		DISPCHECK("Slept State set backlight mdoe invald\n");
 		ret = -1;
 	} else {
-		DISPMSG("primary backlight_mode by I2C\n");
+		DISPMSG("primary backlight_mode\n");
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
+		snprintf(metric_buf, sizeof(metric_buf),
+			"%s:lcd:cabc=%d;CT;1:NR", __func__, mode);
+		log_to_metrics(ANDROID_LOG_INFO, "lcd", metric_buf);
+#endif
 		ret = disp_lcm_set_backlight_mode(pgc->plcm, mode);
 	}
 	_primary_path_unlock(__func__);

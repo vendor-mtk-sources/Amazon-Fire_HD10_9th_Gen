@@ -60,6 +60,13 @@
 
 #ifdef CONFIG_AMAZON_METRICS_LOG
 #include <linux/metricslog.h>
+#endif
+
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 #define TSCPU_METRICS_STR_LEN 128
 #define PREFIX "thermaltscpu:def"
 #endif
@@ -1712,7 +1719,7 @@ static int adp_cpu_get_cur_state(struct thermal_cooling_device *cdev, unsigned l
 static int adp_cpu_set_cur_state(struct thermal_cooling_device *cdev, unsigned long state)
 {
 	int ttj = 117000;
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	char buf[TSCPU_METRICS_STR_LEN];
 
 	if ((cdev->type[13] - '0') >= MAX_CPT_ADAPTIVE_COOLERS

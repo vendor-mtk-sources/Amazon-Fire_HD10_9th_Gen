@@ -20,9 +20,13 @@
 #include <linux/metricslog.h>
 #endif
 
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+
 #include "power.h"
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 struct delayed_work suspend_work;
 #endif
 
@@ -661,7 +665,7 @@ static int __init pm_start_workqueue(void)
 	return pm_wq ? 0 : -ENOMEM;
 }
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 static void suspend_metrics_work(struct work_struct *work)
 {
 	char buf[400] = {0};
@@ -707,7 +711,7 @@ static int __init pm_init(void)
 		return error;
 	pm_print_times_init();
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	INIT_DELAYED_WORK(&suspend_work, suspend_metrics_work);
 	schedule_delayed_work(&suspend_work, 3600*HZ);
 #endif

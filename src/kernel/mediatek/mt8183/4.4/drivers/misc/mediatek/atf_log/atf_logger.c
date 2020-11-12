@@ -46,10 +46,8 @@
 #define GENERATE_ATF_CRASH_REPORT 0xCA7FDEAD
 #define GENERATE_ATF_CRASH_STRING_PATTERN "CA7FDEAD"
 
-#define atf_log_lock()        spin_lock(&atf_logger_lock)
-#define atf_log_unlock()      spin_unlock(&atf_logger_lock)
+static struct mutex atf_mutex; /* shared between the threads */
 
-static DEFINE_SPINLOCK(atf_logger_lock);
 static wait_queue_head_t    atf_log_wq;
 static const struct of_device_id atf_logger_of_ids[] = {
 	{ .compatible = "mediatek,atf_logger", },
@@ -67,15 +65,15 @@ union atf_log_ctl_t {
 		unsigned int atf_buf_unread_size;
 		unsigned int atf_irq_count;
 		unsigned int atf_reader_alive;
-		unsigned long long atf_write_seq;   /*  0x20 */
-		unsigned long long atf_read_seq;/* useless both in ATF and atf_logger */
+		uint64_t atf_write_seq;   /*  0x20 */
+		uint64_t atf_read_seq;/* useless both in ATF and atf_logger */
 		unsigned int atf_aee_dbg_buf_addr;  /*  0x30 */
 		unsigned int atf_aee_dbg_buf_size;
 		unsigned int atf_crash_log_addr;
 		unsigned int atf_crash_log_size;
 		unsigned int atf_crash_flag;        /*  0x40 */
 		unsigned int padding;  /* padding for next 8 bytes alignment variable */
-		unsigned long long atf_except_write_pos_per_cpu[10]; /* 0x48 */
+		uint64_t atf_except_write_pos_per_cpu[CONFIG_NR_CPUS]; /* 0x48 */
 	} info;
 	unsigned char data[ATF_LOG_CTRL_BUF_SIZE];
 };
@@ -129,10 +127,8 @@ static size_t atf_log_dump(unsigned char *buffer, struct ipanic_atf_log_rec *rec
 {
 	size_t ret;
 
-	atf_log_lock();
 	/* ret = atf_log_dump_nolock(buffer, start, size); */
 	ret = atf_log_dump_nolock(buffer, rec, size);
-	atf_log_unlock();
 	/* show_data(atf_log_vir_addr, 24*1024, "atf_buf"); */
 	return ret;
 }
@@ -239,15 +235,6 @@ static ssize_t do_read_log_to_usr(char __user *buf, size_t count)
 	return count;
 }
 
-static int atf_log_fix_reader(void)
-{
-	if (atf_buf_vir_ctl->info.atf_write_seq < atf_log_len)
-		atf_buf_vir_ctl->info.atf_read_pos = 0;
-	else
-		atf_buf_vir_ctl->info.atf_read_pos = atf_buf_vir_ctl->info.atf_write_pos;
-	return 0;
-}
-
 static int atf_log_open(struct inode *inode, struct file *file)
 {
 	int ret;
@@ -257,13 +244,7 @@ static int atf_log_open(struct inode *inode, struct file *file)
 		return ret;
 	file->private_data = NULL;
 
-	atf_log_lock();
-	/* if reader open the file firstly, reset the read position */
-	if (!atf_buf_vir_ctl->info.atf_reader_alive)
-		atf_log_fix_reader();
-
 	atf_buf_vir_ctl->info.atf_reader_alive++;
-	atf_log_unlock();
 
 	return 0;
 }
@@ -276,50 +257,53 @@ static int atf_log_release(struct inode *ignored, struct file *file)
 
 static ssize_t atf_log_read(struct file *file, char __user *buf, size_t count, loff_t *f_pos)
 {
-	ssize_t ret;
+	ssize_t readback_bytes;
+	int rc;
 	unsigned int write_pos;
 	unsigned int read_pos;
-	DEFINE_WAIT(wait);
 
+	readback_bytes = 0;
+	rc = 0;
+
+	/* inside a thread */
+	mutex_lock(&atf_mutex);
 start:
 	while (1) {
-
 		/* pr_notice("atf_log_read: wait in wq\n"); */
-		prepare_to_wait(&atf_log_wq, &wait, TASK_INTERRUPTIBLE);
+		wait_event_interruptible_timeout(atf_log_wq,
+			(atf_buf_vir_ctl->info.atf_write_pos !=
+				atf_buf_vir_ctl->info.atf_read_pos), HZ*10);
+
 		write_pos = atf_buf_vir_ctl->info.atf_write_pos;
-		atf_log_lock();
 		read_pos = atf_buf_vir_ctl->info.atf_read_pos;
-		atf_log_unlock();
 
-		ret = (write_pos == read_pos);
-
-		if (!ret)
+		/* pr_notice("w_pos=%d r_pos=%d\n", write_pos, read_pos); */
+		if (write_pos != read_pos) {
 			break;
-		if (file->f_flags & O_NONBLOCK) {
-			ret = -EAGAIN;
+		} else if (file->f_flags & O_NONBLOCK) {
+			rc = -EAGAIN;
 			break;
 		}
-		if (signal_pending(current)) {
-			ret = -EINTR;
-			break;
-		}
-		schedule();
 	}
-	finish_wait(&atf_log_wq, &wait);
-	/* pr_notice("atf_log_read: finish wait\n"); */
-	if (ret)
-		return ret;
+	if (rc) {
+		pr_notice("%s: rc=%d\n", __func__, rc);
+		/* do the work with the data you're protecting */
+		mutex_unlock(&atf_mutex);
+		return rc;
+	}
 
 	if (unlikely(write_pos == read_pos))
 		goto start;
 
-	atf_log_lock();
-	ret = do_read_log_to_usr(buf, count);
-	atf_log_unlock();
-
+	readback_bytes = do_read_log_to_usr(buf, count);
+	/* pr_notice("read count=%d\n", readback_bytes); */
 	/* update the file pos */
-	*f_pos += ret;
-	return ret;
+	*f_pos += readback_bytes;
+
+	/* do the work with the data you're protecting */
+	mutex_unlock(&atf_mutex);
+
+	return readback_bytes;
 }
 
 static unsigned int atf_log_poll(struct file *file, poll_table *wait)
@@ -329,10 +313,10 @@ static unsigned int atf_log_poll(struct file *file, poll_table *wait)
 	if (!(file->f_mode & FMODE_READ))
 		return ret;
 	poll_wait(file, &atf_log_wq, wait);
-	atf_log_lock();
+
 	if (atf_buf_vir_ctl->info.atf_write_pos != atf_buf_vir_ctl->info.atf_read_pos)
 		ret |= POLLIN | POLLRDNORM;
-	atf_log_unlock();
+
 	return ret;
 }
 
@@ -549,6 +533,14 @@ static int __init atf_logger_probe(struct platform_device *pdev)
 	/* show_atf_log_ctl(); */
 	/* show_data(atf_buf_vir_ctl, 512, "atf_buf"); */
 	atf_buf_vir_ctl->info.atf_reader_alive = 0;
+
+	if (atf_log_len > atf_buf_len ||
+	   (atf_buf_vir_ctl->info.atf_crash_flag != ATF_LAST_MAGIC_NO &&
+	    atf_buf_vir_ctl->info.atf_crash_flag != ATF_CRASH_MAGIC_NO)) {
+		pr_err("Invalid atf log buffer content\n");
+		return -EINVAL;
+	}
+
 	/* initial wait queue */
 	init_waitqueue_head(&atf_log_wq);
 
@@ -620,6 +612,8 @@ static struct platform_driver atf_logger_driver_probe = {
 static int __init atf_log_init(void)
 {
 	int ret = 0;
+
+	mutex_init(&atf_mutex); /* called only ONCE */
 
 	ret = platform_driver_register(&atf_logger_driver_probe);
 	if (ret)

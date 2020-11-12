@@ -500,9 +500,12 @@ static struct SV_LOG_STR gSvLog[RSC_IRQ_TYPE_AMOUNT];
 			avaLen = str_leng - 1;\
 			ptr = pDes = (char *)&(pSrc->_str[ppb][logT][pSrc->_cnt[ppb][logT]]);\
 			ptr2 = &(pSrc->_cnt[ppb][logT]);\
-			snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__);   \
-			while (*ptr++ != '\0') {\
-				(*ptr2)++;\
+			if (snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__) < 0)\
+				LOG_ERR("snprintf fail");\
+			else {\
+				while (*ptr++ != '\0') {\
+					(*ptr2)++;\
+				} \
 			} \
 		} \
 	} \
@@ -517,7 +520,7 @@ static struct SV_LOG_STR gSvLog[RSC_IRQ_TYPE_AMOUNT];
 	struct SV_LOG_STR *pSrc = &gSvLog[irq];\
 	char *ptr;\
 	unsigned int i;\
-	signed int ppb = 0;\
+	unsigned int ppb = 0;\
 	signed int logT = 0;\
 	if (ppb_in > 1) {\
 		ppb = 1;\
@@ -2169,6 +2172,10 @@ static long RSC_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 			current->pid, current->tgid);
 		return -EFAULT;
 	}
+	if (g_RSC_ReqRing.ReadIdx < 0 || g_RSC_ReqRing.WriteIdx < 0) {
+		LOG_WRN("g_RSC_ReqRing index < 0");
+		return -EFAULT;
+	}
 	/*  */
 	pUserInfo = (struct RSC_USER_INFO_STRUCT *) (pFile->private_data);
 	/*  */
@@ -3795,7 +3802,9 @@ static ssize_t rsc_reg_write(struct file *file, const char __user *buffer, size_
 	if (RSCInfo.UserCount <= 0)
 		return 0;
 
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+	len = (sizeof(desc) - 1);
+	if (count < len && count >= 0)
+		len = count;
 	if (copy_from_user(desc, buffer, len))
 		return 0;
 

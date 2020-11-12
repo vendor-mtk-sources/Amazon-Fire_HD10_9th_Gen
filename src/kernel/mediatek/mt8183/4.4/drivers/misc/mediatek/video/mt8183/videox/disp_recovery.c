@@ -362,6 +362,115 @@ int do_esd_check_dsi_te(void)
 	return ret;
 }
 
+int do_lcm_vdo_read(struct ddp_lcm_read_cmd_table *read_table)
+{
+	int ret = 0;
+	int i = 0;
+	struct cmdqRecStruct *handle;
+	disp_path_handle phandle = primary_get_dpmgr_handle();
+
+	static cmdqBackupSlotHandle read_Slot;
+	struct rx_data rx_data0 = {0x00};
+	struct rx_data rx_data1 = {0x00};
+	/*use read_table data0 to return read value*/
+	unsigned char packet_type = 0x00;
+
+	primary_display_manual_lock();
+
+	if (pgc->state == DISP_SLEPT) {
+		DISPCHECK("primary display path is slept?? -- skip read\n");
+		primary_display_manual_unlock();
+		return -1;
+	}
+
+	/* 0.create esd check cmdq */
+	cmdqRecCreate(CMDQ_SCENARIO_DISP_ESD_CHECK, &handle);
+	cmdqBackupAllocateSlot(&read_Slot, 6);
+	for (i = 0; i < 6; i++)
+		cmdqBackupWriteSlot(read_Slot, i, 0xff00ff00);
+
+	/* 1.use cmdq to read from lcm */
+	if (primary_display_is_video_mode()) {
+
+		/* 1.reset */
+		cmdqRecReset(handle);
+
+		/* wait stream eof first */
+		/* cmdqRecWait(qhandle, CMDQ_EVENT_DISP_RDMA0_EOF); */
+		cmdqRecWait(handle, CMDQ_EVENT_MUTEX0_STREAM_EOF);
+
+		/* 2.stop dsi vdo mode */
+		dpmgr_path_build_cmdq(phandle, handle, CMDQ_STOP_VDO_MODE, 0);
+
+		/* 3.read from lcm */
+		ddp_dsi_read_lcm_register_cmdq(DISP_MODULE_DSI0, &read_Slot,
+			handle, read_table);
+
+		/* 4.start dsi vdo mode */
+		dpmgr_path_build_cmdq(phandle, handle, CMDQ_START_VDO_MODE, 0);
+		cmdqRecClearEventToken(handle, CMDQ_EVENT_MUTEX0_STREAM_EOF);
+
+		/* 5.trigger path */
+		dpmgr_path_trigger(phandle, handle, CMDQ_ENABLE);
+
+		/* mutex sof wait*/
+		ddp_mutex_set_sof_wait(dpmgr_path_get_mutex(phandle),
+			handle, 0);
+
+		/* 6.flush instruction */
+		ret = cmdqRecFlush(handle);
+
+
+	} else {
+		DISPCHECK("Not support cmd mode\n");
+	}
+
+	if (ret == 1) {	/* cmdq fail */
+		if (need_wait_esd_eof()) {
+			/* Need set esd check eof */
+			/*synctoken to let trigger loop go. */
+			cmdqCoreSetEvent(CMDQ_SYNC_TOKEN_ESD_EOF);
+		}
+		/* do dsi reset */
+		dpmgr_path_build_cmdq(phandle, handle,
+			 CMDQ_DSI_RESET, 0);
+		goto DISPTORY;
+	}
+
+	for (i = 0; i < 3; i++) {
+		cmdqBackupReadSlot(read_Slot, 2*i,
+		(uint32_t *)&rx_data0);
+		cmdqBackupReadSlot(read_Slot, 2*i+1,
+		(uint32_t *)&rx_data1);
+		packet_type = rx_data0.byte0;
+
+		DISPERR("rx_data0 b0 %x, b1 %x, b2 %x, b3 = %x\n",
+			rx_data0.byte0, rx_data0.byte1, rx_data0.byte2,
+			rx_data0.byte3);
+
+		if (packet_type == 0x1A || packet_type == 0x1C) {
+			read_table->data[i].byte0 = rx_data1.byte0;
+		} else if (packet_type == 0x11 || packet_type == 0x12 ||
+				packet_type == 0x21 || packet_type == 0x22) {
+			read_table->data[i].byte0 = rx_data0.byte1;
+		} else {
+			DISPERR("packet_type error!\n");
+		}
+	}
+
+DISPTORY:
+	if (read_Slot) {
+		cmdqBackupFreeSlot(read_Slot);
+		read_Slot = 0;
+	}
+
+	/* 7.destroy esd config thread */
+	cmdqRecDestroy(handle);
+	primary_display_manual_unlock();
+
+	return ret;
+}
+
 int do_esd_check_read(void)
 {
 	int ret = 0;

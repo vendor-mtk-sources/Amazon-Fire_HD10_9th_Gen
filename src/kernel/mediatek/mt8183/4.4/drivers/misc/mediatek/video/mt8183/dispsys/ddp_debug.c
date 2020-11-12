@@ -135,6 +135,40 @@ unsigned int get_backup_vfp(void)
 
 static char dbg_buf[2048];
 
+unsigned char do_vdo_dsi_read(unsigned char cmd)
+{
+	unsigned char reg_value = 0x00;
+	struct ddp_lcm_read_cmd_table read_table;
+	memset(&read_table, 0,
+		sizeof(struct ddp_lcm_read_cmd_table));
+	read_table.cmd[0] = cmd;
+	read_table.cmd[1] = cmd;
+	read_table.cmd[2] = cmd;
+
+	do_lcm_vdo_read(&read_table);
+
+	reg_value = read_table.data[0].byte0;
+
+	DDPDBG("after b0 %x, b1 %x, b2 %x, b3 = %x\n",
+		read_table.data[0].byte0,
+		read_table.data[0].byte1,
+		read_table.data[0].byte2,
+		read_table.data[0].byte3);
+	DDPDBG("after b0 %x, b1 %x, b2 %x, b3 = %x\n",
+		read_table.data[1].byte0,
+		read_table.data[1].byte1,
+		read_table.data[1].byte2,
+		read_table.data[1].byte3);
+	DDPDBG("after b0 %x, b1 %x, b2 %x, b3 = %x\n",
+		read_table.data[2].byte0,
+		read_table.data[2].byte1,
+		read_table.data[2].byte2,
+		read_table.data[2].byte3);
+
+	return reg_value;
+
+}
+
 static void process_dbg_opt(const char *opt)
 {
 	char *buf = dbg_buf + strlen(dbg_buf);
@@ -375,6 +409,21 @@ static void process_dbg_opt(const char *opt)
 		disp_color_dbg_log_level(debug_level);
 
 		sprintf(buf, "color_dbg_en = 0x%x\n", debug_level);
+	} else if (strncmp(opt, "vdo_dsi_read:", 13) == 0) {
+		char *p = (char *)opt + 13;
+		unsigned int cmd;
+		unsigned char reg_value = 0x00;
+
+		ret = kstrtouint(p, 0, &cmd);
+		if (ret) {
+			snprintf(buf, 50, "error to parse cmd %s\n", opt);
+			return;
+		}
+		DDPMSG("enter vdo_dsi_read!\n");
+		reg_value = do_vdo_dsi_read(cmd);
+
+		snprintf(buf, 50, "read reg:0x%02x,value:0x%02x\n",
+			cmd, reg_value);
 	} else if (strncmp(opt, "corr_dbg:", 9) == 0) {
 		char *p = (char *)opt + 9;
 

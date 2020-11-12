@@ -211,6 +211,19 @@ int dsi_basic_irq_enable(enum DISP_MODULE_ENUM module, void *cmdq);
 extern int mipi_clk_change(int msg, int en);
 unsigned int _is_power_on_status(enum DISP_MODULE_ENUM module);
 
+
+extern int ddp_dsi_read_lcm_register_cmdq(enum DISP_MODULE_ENUM module,
+	cmdqBackupSlotHandle *read_Slot,
+	struct cmdqRecStruct *cmdq_trigger_handle,
+	struct ddp_lcm_read_cmd_table *read_table);
+void DSI_set_cmdq_V3(enum DISP_MODULE_ENUM module, struct cmdqRecStruct *cmdq,
+		     LCM_setting_table_V3 *para_tbl, unsigned int size,
+		     unsigned char force_update);
+
+extern void primary_display_set_backlight_mode_by_cmdq(LCM_setting_table_V3 *para_tbl, unsigned int size,
+				  unsigned char force_update);
+
+
 #ifdef __cplusplus
 }
 #endif

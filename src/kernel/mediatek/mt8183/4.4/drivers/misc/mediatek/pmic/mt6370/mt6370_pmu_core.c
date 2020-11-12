@@ -21,11 +21,18 @@
 #include "inc/mt6370_pmu.h"
 #include "inc/mt6370_pmu_core.h"
 #include "inc/mt6370_pmu_charger.h"
+#ifdef CONFIG_MT6370_SUPPORT_SYSCORE
+#include <linux/syscore_ops.h>
+#endif
 
 struct mt6370_pmu_core_data {
 	struct mt6370_pmu_chip *chip;
 	struct device *dev;
 };
+
+#ifdef CONFIG_MT6370_SUPPORT_SYSCORE
+static struct mt6370_pmu_core_data *g_core_data;
+#endif
 
 static irqreturn_t mt6370_pmu_otp_irq_handler(int irq, void *data)
 {
@@ -183,6 +190,27 @@ static int mt6370_pmu_core_reset(struct mt6370_pmu_core_data *core_data)
 				    MT6370_PMU_REG_DBCTRL2, 0x32);
 }
 
+#ifdef CONFIG_MT6370_SUPPORT_SYSCORE
+static void mt6370_pmu_core_shutdown(void)
+{
+	int ret;
+
+	ret = mt6370_pmu_core_reset(g_core_data);
+	if (ret < 0)
+		dev_err(g_core_data->dev, "pmu core reset fail\n");
+	dev_info(g_core_data->dev, "pmu core shutdown.\n");
+
+	if (mtk_chr_is_dcap_enable())
+		mt6370_pmu_reg_clr_bit(g_core_data->chip, MT6370_PMU_REG_CHGCTRL2,
+			MT6370_MASK_CHG_EN);
+
+}
+
+static struct syscore_ops mt6370_syscore_ops = {
+	.shutdown = mt6370_pmu_core_shutdown,
+};
+#endif
+
 static int mt6370_pmu_core_probe(struct platform_device *pdev)
 {
 	struct mt6370_pmu_core_platdata *pdata = dev_get_platdata(&pdev->dev);
@@ -215,12 +243,17 @@ static int mt6370_pmu_core_probe(struct platform_device *pdev)
 	core_data->chip = dev_get_drvdata(pdev->dev.parent);
 	core_data->dev = &pdev->dev;
 	platform_set_drvdata(pdev, core_data);
-
+#ifdef CONFIG_MT6370_SUPPORT_SYSCORE
+	g_core_data = core_data;
+#endif
 	ret = mt6370_pmu_core_init_register(core_data);
 	if (ret < 0)
 		goto out_init_reg;
 
 	mt6370_pmu_core_irq_register(pdev);
+#ifdef CONFIG_MT6370_SUPPORT_SYSCORE
+	register_syscore_ops(&mt6370_syscore_ops);
+#endif
 	dev_info(&pdev->dev, "%s successfully\n", __func__);
 	return 0;
 out_init_reg:
@@ -237,6 +270,7 @@ static int mt6370_pmu_core_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifndef CONFIG_MT6370_SUPPORT_SYSCORE
 static void mt6370_pmu_core_shutdown(struct platform_device *pdev)
 {
 	struct mt6370_pmu_core_data *core_data = platform_get_drvdata(pdev);
@@ -248,6 +282,7 @@ static void mt6370_pmu_core_shutdown(struct platform_device *pdev)
 	if (mtk_chr_is_dcap_enable())
 		mt6370_pmu_reg_clr_bit(core_data->chip, MT6370_PMU_REG_CHGCTRL2, MT6370_MASK_CHG_EN);
 }
+#endif
 
 static const struct of_device_id mt_ofid_table[] = {
 	{ .compatible = "mediatek,mt6370_pmu_core", },
@@ -269,7 +304,9 @@ static struct platform_driver mt6370_pmu_core = {
 	},
 	.probe = mt6370_pmu_core_probe,
 	.remove = mt6370_pmu_core_remove,
+#ifndef CONFIG_MT6370_SUPPORT_SYSCORE
 	.shutdown = mt6370_pmu_core_shutdown,
+#endif
 	.id_table = mt_id_table,
 };
 module_platform_driver(mt6370_pmu_core);

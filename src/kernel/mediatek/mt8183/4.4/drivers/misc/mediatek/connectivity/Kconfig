@@ -345,6 +345,12 @@ config MTK_WLAN_ANT_SWITCH
 	help
 	  antenna switch support
 
+config SUPPORT_DFS_CHANNEL
+	bool "SUPPORT_DFS_CHANNEL"
+	default n
+	help
+	  Support DFS channel
+
 config MTK_COMBO_CHIP_DEEP_SLEEP_SUPPORT
 	depends on MTK_COMBO_CHIP_MT6632
 	default y

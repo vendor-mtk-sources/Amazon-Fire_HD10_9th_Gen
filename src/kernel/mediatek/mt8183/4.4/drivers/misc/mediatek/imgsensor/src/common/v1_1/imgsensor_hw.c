@@ -20,6 +20,22 @@
 #include "imgsensor_sensor.h"
 #include "imgsensor_hw.h"
 
+#if defined(CONFIG_CAM_AVDD_SRC_SWITCH)
+#define PRODUCT_TR_NAME		0x005E
+#define BOARD_REV_PROTO		0x00
+#define BOARD_REV_HVT1p0	0x10
+#define BOARD_REV_HVT1p1	0x11
+#define BOARD_REV_EVT		0x20
+#define BOARD_REV_DVT		0x30
+#define BOARD_REV_PVT		0x40
+
+extern unsigned int idme_get_board_type(void);
+extern unsigned int idme_get_board_rev(void);
+
+static unsigned int g_board_type;
+static unsigned int g_board_rev;
+#endif
+
 char *imgsensor_sensor_idx_name[IMGSENSOR_SENSOR_IDX_MAX_NUM] = {
 	IMGSENSOR_SENSOR_IDX_NAME_MAIN,
 	IMGSENSOR_SENSOR_IDX_NAME_SUB,
@@ -34,6 +50,11 @@ enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 	struct IMGSENSOR_HW_CUSTOM_POWER_INFO *ppwr_info;
 	int i, j;
 
+#if defined(CONFIG_CAM_AVDD_SRC_SWITCH)
+	g_board_type = idme_get_board_type();
+	g_board_rev = idme_get_board_rev();
+#endif
+
 	for (i = 0; i < IMGSENSOR_HW_ID_MAX_NUM; i++) {
 		if (hw_open[i] != NULL)
 			(hw_open[i]) (&phw->pdev[i]);
@@ -45,7 +66,13 @@ enum IMGSENSOR_RETURN imgsensor_hw_init(struct IMGSENSOR_HW *phw)
 	for (i = 0; i < IMGSENSOR_SENSOR_IDX_MAX_NUM; i++) {
 		psensor_pwr = &phw->sensor_pwr[i];
 
-		pcust_pwr_cfg = imgsensor_custom_config;
+#if defined(CONFIG_CAM_AVDD_SRC_SWITCH)
+		if (g_board_type == PRODUCT_TR_NAME && g_board_rev > BOARD_REV_HVT1p1)
+			pcust_pwr_cfg = imgsensor_custom_config_later;
+		else
+#endif
+			pcust_pwr_cfg = imgsensor_custom_config;
+
 		while (pcust_pwr_cfg->sensor_idx != i)
 			pcust_pwr_cfg++;
 
@@ -201,10 +228,18 @@ enum IMGSENSOR_RETURN imgsensor_hw_power(
 			pwr_status,
 			platform_power_sequence, imgsensor_sensor_idx_name[sensor_idx]);
 
-	imgsensor_hw_power_sequence(
-			phw,
-			sensor_idx,
-			pwr_status, sensor_power_sequence, curr_sensor_name);
+#if defined(CONFIG_CAM_AVDD_SRC_SWITCH)
+	if (g_board_type == PRODUCT_TR_NAME && g_board_rev > BOARD_REV_HVT1p1)
+		imgsensor_hw_power_sequence(
+				phw,
+				sensor_idx,
+				pwr_status, sensor_power_sequence_later, curr_sensor_name);
+	else
+#endif
+		imgsensor_hw_power_sequence(
+				phw,
+				sensor_idx,
+				pwr_status, sensor_power_sequence, curr_sensor_name);
 
 	return IMGSENSOR_RETURN_SUCCESS;
 }

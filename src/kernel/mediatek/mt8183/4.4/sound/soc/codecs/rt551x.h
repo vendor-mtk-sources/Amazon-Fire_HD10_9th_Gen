@@ -645,6 +645,7 @@ struct rt551x_priv {
 	RCHK_FUNC fp_readable_register;
 };
 
+/* struct defined for RTK header and DSP FW */
 typedef struct {
 	unsigned int Offset;
 	unsigned int Size;
@@ -656,7 +657,10 @@ typedef struct {
 //	unsigned int Addr;
 //} SMicTDInfo;
 
-//#define	SMICFW_SYNC			0x23795888
+#ifdef CONFIG_SND_SOC_RT551X_ADF
+#define	SMICFW_SYNC			0x23795889
+#define RT551X_CORE_NO (0)
+#endif
 
 typedef struct {
 	unsigned int Sync;

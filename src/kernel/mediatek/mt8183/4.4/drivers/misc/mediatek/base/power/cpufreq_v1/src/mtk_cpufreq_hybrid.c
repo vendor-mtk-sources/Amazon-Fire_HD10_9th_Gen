@@ -48,6 +48,10 @@
 #include "sspm_ipi.h"
 #endif
 
+#ifdef CONFIG_AMZN_CPU_FREQ_TRACE
+#include <linux/amzn_rt_trace.h>
+#endif
+
 #include <mt-plat/met_drv.h>
 
 #include "mtk_cpufreq_internal.h"
@@ -610,6 +614,16 @@ int cpuhvfs_set_dvfs(int cluster_id, unsigned int freq)
 
 	/* [3:0] freq_idx */
 	freq_idx = _search_available_freq_idx(p, freq, 0);
+#ifdef CONFIG_AMZN_CPU_FREQ_TRACE
+	amzn_rt_trace_tag(AMZN_RT_TRACE_TYPE_CPU,
+			  "volt",
+			  cluster_id,
+			  cpu_dvfs_get_volt_by_idx(p, freq_idx) * 10);
+	amzn_rt_trace_tag(AMZN_RT_TRACE_TYPE_CPU,
+			  "freq",
+			  cluster_id,
+			  freq);
+#endif
 	csram_write((OFFS_WFI_S + (cluster_id * 4)), freq_idx);
 
 	return 0;

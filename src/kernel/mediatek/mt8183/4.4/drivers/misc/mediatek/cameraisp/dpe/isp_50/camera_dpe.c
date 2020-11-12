@@ -500,9 +500,12 @@ static struct SV_LOG_STR gSvLog[DPE_IRQ_TYPE_AMOUNT];
 			avaLen = str_leng - 1;\
 			ptr = pDes = (char *)&(pSrc->_str[ppb][logT][pSrc->_cnt[ppb][logT]]);\
 			ptr2 = &(pSrc->_cnt[ppb][logT]);\
-			snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__);   \
-			while (*ptr++ != '\0') {\
-				(*ptr2)++;\
+			if (snprintf((char *)(pDes), avaLen, fmt, ##__VA_ARGS__) < 0)\
+				LOG_INF("snprintf fail");\
+			else {\
+				while (*ptr++ != '\0') {\
+					(*ptr2)++;\
+				} \
 			} \
 		} \
 	} \
@@ -514,7 +517,7 @@ static struct SV_LOG_STR gSvLog[DPE_IRQ_TYPE_AMOUNT];
 	struct SV_LOG_STR *pSrc = &gSvLog[irq];\
 	char *ptr;\
 	unsigned int i;\
-	signed int ppb = 0;\
+	unsigned int ppb = 0;\
 	signed int logT = 0;\
 	if (ppb_in > 1) {\
 		ppb = 1;\
@@ -1030,6 +1033,8 @@ static bool ConfigDVEFrameByReqIdx(signed int ReqIdx)
 	unsigned int j;
 	unsigned long flags; /* old: MUINT32 flags;*//* FIX to avoid build warning */
 
+	if (ReqIdx < 0)
+		return MFALSE;
 
 	spin_lock_irqsave(&(DPEInfo.SpinLockIrq[DPE_IRQ_TYPE_INT_DPE_ST]), flags);
 
@@ -1064,7 +1069,8 @@ static bool ConfigDVERequest(signed int ReqIdx)
 	unsigned int j;
 	unsigned long flags; /* old: unsigned int flags;*//* FIX to avoid build warning */
 
-
+	if (ReqIdx < 0)
+		return MFALSE;
 	spin_lock_irqsave(&(DPEInfo.SpinLockIrq[DPE_IRQ_TYPE_INT_DPE_ST]), flags);
 	/*if (g_DVE_RequestRing.DVEReq_Struct[ReqIdx].RequestState == DPE_REQUEST_STATE_PENDING) {*/
 		/*g_DVE_RequestRing.DVEReq_Struct[ReqIdx].RequestState = DPE_REQUEST_STATE_RUNNING;*/
@@ -2592,6 +2598,10 @@ static long DPE_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 	if (pFile->private_data == NULL) {
 		LOG_INF("private_data is NULL,(process, pid, tgid)=(%s, %d, %d)", current->comm,
 			current->pid, current->tgid);
+		return -EFAULT;
+	}
+	if (g_DVE_RequestRing.ReadIdx < 0 || g_DVE_RequestRing.WriteIdx < 0) {
+		LOG_INF("g_DVE_RequestRing index error");
 		return -EFAULT;
 	}
 	/*  */
@@ -4171,7 +4181,9 @@ static ssize_t dpe_reg_write(struct file *file, const char __user *buffer, size_
 	int addr = 0, val = 0;
 	long int tempval;
 
-	len = (count < (sizeof(desc) - 1)) ? count : (sizeof(desc) - 1);
+	len = (sizeof(desc) - 1);
+	if (count < len && count >= 0)
+		len = count;
 	if (copy_from_user(desc, buffer, len))
 		return 0;
 
@@ -4470,12 +4482,16 @@ static void DPE_ScheduleDveWork(struct work_struct *data)
 	if (bResulst == MFALSE)
 		ConfigDVEFrameByReqIdx(g_DVE_RequestRing.HWProcessIdx);
 
-	LOG_INF("DVE:bFound:%d, DveWriteIdx:%d, WriteIdx:%d, gDveCnt:%d, RequestState:%d,HWIdx:%d\n",
-		bFound, DveWriteIdx,
-		g_DVE_RequestRing.WriteIdx,
-		gDveCnt,
-		g_DVE_RequestRing.DVEReq_Struct[DveWriteIdx].RequestState,
-		g_DVE_RequestRing.HWProcessIdx);
+	if (DveWriteIdx >= 0 && DveWriteIdx < _SUPPORT_MAX_DPE_REQUEST_RING_SIZE_) {
+		LOG_INF(
+			"DVE:bFound:%d, DveWriteIdx:%d, WriteIdx:%d, gDveCnt:%d, RequestState:%d,HWIdx:%d\n",
+			bFound, DveWriteIdx,
+			g_DVE_RequestRing.WriteIdx,
+			gDveCnt,
+			g_DVE_RequestRing.DVEReq_Struct[DveWriteIdx]
+			.RequestState,
+			g_DVE_RequestRing.HWProcessIdx);
+	}
 
 	if (bResulst == MTRUE)
 		wake_up_interruptible(&DPEInfo.WaitQueueHead);

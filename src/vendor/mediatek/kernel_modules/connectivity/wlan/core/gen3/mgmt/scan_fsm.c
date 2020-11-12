@@ -2170,14 +2170,14 @@ VOID scnScanDoneTimeout(IN P_ADAPTER_T prAdapter, ULONG ulParamPtr)
 
 	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
 
-	DBGLOG(SCN, WARN, "scnScanDoneTimeout %d \r\n", prScanInfo->ucScanDoneTimeoutCnt);
+	DBGLOG(SCN, WARN, "scnScanDoneTimeout %d \n", prScanInfo->ucScanDoneTimeoutCnt);
 
 	prScanInfo->ucScanDoneTimeoutCnt++;
 	/* whole chip reset check */
 	if (prScanInfo->ucScanDoneTimeoutCnt > SCAN_DONE_TIMEOUT_THRESHOLD) {
 
 		DBGLOG(SCN, ERROR,
-		       " meet SCAN_DONE_TIMEOUT_THRESHOLD %d, trigger whole chip reset !! \r\n",
+		       " meet SCAN_DONE_TIMEOUT_THRESHOLD %d, trigger whole chip reset !! \n",
 		       SCAN_DONE_TIMEOUT_THRESHOLD);
 
 		GL_RESET_TRIGGER(prAdapter, RST_FLAG_DO_CORE_DUMP);

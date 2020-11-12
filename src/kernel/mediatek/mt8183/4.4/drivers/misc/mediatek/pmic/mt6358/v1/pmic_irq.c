@@ -46,8 +46,8 @@
 #include <linux/metricslog.h>
 #endif
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
-#include <linux/metricslog.h>
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
 #endif
 
 /* Global variable */
@@ -281,7 +281,7 @@ struct pmic_sp_interrupt sp_interrupts[] = {
 
 unsigned int sp_interrupt_size = ARRAY_SIZE(sp_interrupts);
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 static struct work_struct metrics_work;
 static bool pwrkey_press;
 static void pwrkey_log_to_metrics(struct work_struct *data);
@@ -337,7 +337,7 @@ static unsigned int pmic_check_intNo(enum PMIC_IRQ_ENUM intNo,
 	return 0;
 }
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 #define PWRKEY_METRICS_STR_LEN 128
 static void pwrkey_log_to_metrics(struct work_struct *data)
 {
@@ -368,7 +368,7 @@ void pwrkey_int_handler(void)
 	kpd_pwrkey_pmic_handler(0x1);
 #endif
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	pwrkey_press = true;
 	schedule_work(&metrics_work);
 #endif
@@ -388,7 +388,7 @@ void pwrkey_int_handler_r(void)
 	kpd_pwrkey_pmic_handler(0x0);
 #endif
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	pwrkey_press = false;
 	schedule_work(&metrics_work);
 #endif
@@ -888,7 +888,7 @@ void PMIC_EINT_SETTING(void)
 	kpoc_reboot_timer.function = kpoc_reboot_timer_func;
 #endif
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	INIT_WORK(&metrics_work, pwrkey_log_to_metrics);
 #endif
 }

@@ -58,3 +58,11 @@ config MTK_CM_MGR
 	---help---
 	  This kernel config can be used to enable CM MGR.
 	  If unsure, say N.
+
+config AMZN_CPU_FREQ_TRACE
+	bool "Amazon CPU volt/freq trace"
+	depends on AMZN_RT_TRACE
+	default n
+	---help---
+	  This kernel config can be used to enable Amazon CPU volt/freq runtime trace.
+	  If unsure, say N.

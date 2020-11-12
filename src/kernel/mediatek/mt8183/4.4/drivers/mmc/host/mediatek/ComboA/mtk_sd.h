@@ -437,7 +437,7 @@ struct msdc_host {
 	u32 pc_suspend;		/* suspend/resume count */
 	u32 cmd19_fail;		/* cmd19 tune failed count */
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	struct delayed_work metrics_work;
 	bool metrics_enable;
 	u32 crc_count_p;		/* reported crc count */

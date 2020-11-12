@@ -589,9 +589,15 @@ config SND_SOC_RT551X_SPI
 	tristate "SND_SOC_RT551X_SPI"
 	depends on SPI_MASTER
 
+config SND_SOC_RT551X_ADF
+	tristate "SND_SOC_RT551X_ADF"
+	default n
+	help
+		ADF dsp firmware support
+
 config SND_SOC_RT551X_TEST_ONLY
 	tristate "SND_SOC_RT551X_TEST_ONLY"
-	depends on SND_SOC_RT551X_SPI
+	depends on SND_SOC_RT551X_SPI || SND_SOC_RT551X_ADF
 
 config SND_SOC_RT551X_PINCTRL
 	tristate "SND_RT551X_PINCTRL"

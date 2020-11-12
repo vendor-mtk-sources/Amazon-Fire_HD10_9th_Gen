@@ -29,7 +29,13 @@
 
 #ifdef CONFIG_AMAZON_METRICS_LOG
 #include <linux/metricslog.h>
+#endif
 
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 #ifndef THERMO_METRICS_STR_LEN
 #define THERMO_METRICS_STR_LEN 128
 #endif

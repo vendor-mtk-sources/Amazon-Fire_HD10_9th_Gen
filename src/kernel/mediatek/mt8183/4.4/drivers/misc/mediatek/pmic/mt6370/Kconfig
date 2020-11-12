@@ -84,3 +84,9 @@ config MT6370_PMU_DSV
 	  Provide positive and negative voltage for LCD display bias.
 	  Say Y here to enable support for
 	  MT6370 dsv device.
+
+config MT6370_SUPPORT_SYSCORE
+	bool "MT6370 support syscore"
+	help
+	  This selects for using syscore.shutdown to replace platform.shutdown.
+	  It is used for meeting the lcm power donw sequence.

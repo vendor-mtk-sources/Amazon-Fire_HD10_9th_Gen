@@ -49,5 +49,5 @@ int ddp_debug_partial_statistic(void);
 
 int ddp_mem_test(void);
 int ddp_lcd_test(void);
-
+extern int do_lcm_vdo_read(struct ddp_lcm_read_cmd_table *read_table);
 #endif /* __DDP_DEBUG_H__ */

@@ -37,6 +37,10 @@
 #include <linux/sign_of_life.h>
 #endif
 
+#ifdef CONFIG_AMZN_SIGN_OF_LIFE
+#include <linux/amzn_sign_of_life.h>
+#endif
+
 struct shutdown_condition {
 	bool is_overheat;
 	bool is_soc_zero_percent;
@@ -254,7 +258,7 @@ int set_shutdown_cond(int shutdown_cond)
 	case LOW_BATTERY_TEMP:
 		mutex_lock(&sdc.lock);
 		bm_err("LOW_BATTERY_TEMP shutdown\n");
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
+#if defined(CONFIG_AMAZON_SIGN_OF_LIFE) || defined(CONFIG_AMZN_SIGN_OF_LIFE)
 		life_cycle_set_thermal_shutdown_reason(THERMAL_SHUTDOWN_REASON_BATTERY);
 #endif
 		sdc.shutdown_status.is_low_battery_temp = true;

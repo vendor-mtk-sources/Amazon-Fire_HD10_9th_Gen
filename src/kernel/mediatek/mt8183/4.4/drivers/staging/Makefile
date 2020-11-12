@@ -50,3 +50,4 @@ obj-$(CONFIG_MOST)		+= most/
 obj-$(CONFIG_NANOHUB)		+= nanohub/
 obj-$(CONFIG_MTK_DO)		+= dyn_obj/
 obj-$(CONFIG_AMAZON)		+= amazon/
+obj-$(CONFIG_AMZN)            += ../../../../../../device/amazon/kernel/driver/

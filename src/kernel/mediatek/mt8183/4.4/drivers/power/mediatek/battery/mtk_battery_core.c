@@ -86,6 +86,10 @@
 #include <linux/idme.h>
 #endif
 
+#ifdef CONFIG_AMZN_IDME
+#include <linux/amzn_idme.h>
+#endif
+
 #define DISABLE_LOW_BATTERY_TEMP (-100)
 
 /* ============================================================ */
@@ -363,7 +367,7 @@ void fgauge_get_profile_id(void)
 {
 	gm.battery_id = 0;
 }
-#elif defined(CONFIG_IDME)
+#elif defined(CONFIG_IDME) || defined(CONFIG_AMZN_IDME)
 void fgauge_get_profile_id(void)
 {
 	int ret = 0;

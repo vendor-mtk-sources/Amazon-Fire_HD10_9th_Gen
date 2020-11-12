@@ -25,6 +25,10 @@
 #include <linux/metricslog.h>
 #endif
 
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+
 /* for EINT register and enum */
 #include <upmu_common.h>
 #include "accdet.h"
@@ -176,7 +180,7 @@ char *accdet_report_string[] = {
 	"Line_out_device"
 };
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 static char *accdet_metrics_cable_string[3] = {
 	"NOTHING",
 	"HEADSET",
@@ -647,7 +651,7 @@ static void send_accdet_status_event(int cable, int status)
 
 static void send_key_event(int keycode, int flag)
 {
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	char buf[128];
 	char *string = NULL;
 #endif
@@ -656,7 +660,7 @@ static void send_key_event(int keycode, int flag)
 		input_report_key(kpd_accdet_dev, KEY_VOLUMEDOWN, flag);
 		input_sync(kpd_accdet_dev);
 		ACCDET_DEBUG("[accdet][send_key_event]KEY_VOLUMEDOWN %d\n", flag);
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		string = "KEY_VOLUMEDOWN";
 #endif
 		break;
@@ -664,7 +668,7 @@ static void send_key_event(int keycode, int flag)
 		input_report_key(kpd_accdet_dev, KEY_VOLUMEUP, flag);
 		input_sync(kpd_accdet_dev);
 		ACCDET_DEBUG("[accdet][send_key_event]KEY_VOLUMEUP %d\n", flag);
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		string = "KEY_VOLUMEUP";
 #endif
 		break;
@@ -672,7 +676,7 @@ static void send_key_event(int keycode, int flag)
 		input_report_key(kpd_accdet_dev, KEY_PLAYPAUSE, flag);
 		input_sync(kpd_accdet_dev);
 		ACCDET_DEBUG("[accdet][send_key_event]KEY_PLAYPAUSE %d\n", flag);
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		string = "KEY_PLAYPAUSE";
 #endif
 		break;
@@ -680,16 +684,16 @@ static void send_key_event(int keycode, int flag)
 		input_report_key(kpd_accdet_dev, KEY_VOICECOMMAND, flag);
 		input_sync(kpd_accdet_dev);
 		ACCDET_DEBUG("[accdet][send_key_event]KEY_VOICECOMMAND %d\n", flag);
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		string = "KEY_VOICECOMMAND";
 #endif
 		break;
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	default:
 		string = "NOKEY";
 #endif
 	}
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	snprintf(buf, sizeof(buf),
 		"%s:jack:key=%s;DV;1,state=%d;CT;1:NR",
 			__func__, string, flag);
@@ -911,7 +915,7 @@ static inline void check_cable_type(void)
  */
 static inline void headset_plug_out(void)
 {
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	char buf[128];
 #endif
 	send_accdet_status_event(s_cable_type, 0);
@@ -923,7 +927,7 @@ static inline void headset_plug_out(void)
 		ACCDET_INFO("[accdet]plug_out send key = %d release\n", g_cur_key);
 		g_cur_key = 0;
 	}
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	snprintf(buf, sizeof(buf),
 		"%s:jack:unplugged=1;CT;1:NR", __func__);
 	log_to_metrics(ANDROID_LOG_INFO, "AudioJackEvent", buf);
@@ -1320,7 +1324,7 @@ static int accdet_eint_func(int eint_id)
 static void accdet_work_callback(struct work_struct *work)
 {
 	unsigned int reg_val = 0;
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	char buf[128];
 #endif
 	reg_val = 0;
@@ -1330,7 +1334,7 @@ static void accdet_work_callback(struct work_struct *work)
 
 	mutex_lock(&accdet_eint_irq_sync_mutex);
 	if (s_eint_accdet_sync_flag == 1) {
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		if (s_pre_status == PLUG_OUT) {
 			snprintf(buf, sizeof(buf),
 				"%s:jack:plugged=1;CT;1,state_%s=1;CT;1:NR",

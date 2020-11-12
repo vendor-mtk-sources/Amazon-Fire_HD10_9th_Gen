@@ -340,15 +340,18 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 	host->class_dev.parent = dev;
 	host->class_dev.class = &mmc_host_class;
 	device_initialize(&host->class_dev);
+#ifdef CONFIG_MMC_ASYNC_SUSPEND_RESUME
+	device_enable_async_suspend(&host->class_dev);
+#endif
 
 	if (mmc_gpio_alloc(host)) {
 		put_device(&host->class_dev);
 		return NULL;
 	}
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	INIT_DELAYED_WORK(&host->metrics_delay_work,
 				mmc_host_metrics_work);
-#endif /* CONFIG_AMAZON_METRICS_LOG */
+#endif /* CONFIG_AMAZON_METRICS_LOG || CONFIG_AMZN_METRICS_LOG */
 
 	spin_lock_init(&host->lock);
 	init_waitqueue_head(&host->wq);

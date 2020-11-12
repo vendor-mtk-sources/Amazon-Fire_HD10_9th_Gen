@@ -2129,7 +2129,7 @@ static int ltr578_i2c_remove(struct i2c_client *client)
 
 static int ltr578_i2c_detect(struct i2c_client *client, struct i2c_board_info *info)
 {
-	strcpy(info->type, LTR578_DEV_NAME);
+	strncpy(info->type, LTR578_DEV_NAME, sizeof(info->type));
 	return 0;
 }
 

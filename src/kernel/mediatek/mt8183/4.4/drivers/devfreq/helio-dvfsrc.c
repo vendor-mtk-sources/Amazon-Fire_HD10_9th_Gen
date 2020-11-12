@@ -34,6 +34,9 @@
 #include <sspm_ipi_pin.h>
 #endif
 
+#ifdef CONFIG_AMZN_DDR_FREQ_TRACE
+#include <linux/amzn_rt_trace.h>
+#endif
 #include <mtk_vcorefs_governor.h>
 
 #include <mt-plat/aee.h>
@@ -317,6 +320,17 @@ static int commit_data(struct helio_dvfsrc *dvfsrc, int type, int data)
 		else if (data < 0)
 			data = DDR_OPP_NUM - 1;
 
+#ifdef CONFIG_AMZN_DDR_FREQ_TRACE
+		{
+			/* DDR_OPP_NUM = 3 */
+			u32 freq[DDR_OPP_NUM] = {3200, 2400, 1600};
+
+			amzn_rt_trace_tag(AMZN_RT_TRACE_TYPE_DDR,
+					  "freq",
+					  freq[data],
+					  0);
+		}
+#endif
 		level = DDR_OPP_NUM - data - 1;
 		dvfsrc_write(dvfsrc, DVFSRC_SW_REQ,
 				(dvfsrc_read(dvfsrc, DVFSRC_SW_REQ)
@@ -345,6 +359,12 @@ static int commit_data(struct helio_dvfsrc *dvfsrc, int type, int data)
 		else if (data < 0)
 			data = VCORE_OPP_NUM - 1;
 
+#ifdef CONFIG_AMZN_DDR_FREQ_TRACE
+		amzn_rt_trace_tag(AMZN_RT_TRACE_TYPE_DDR,
+				  "volt",
+				  get_vcore_opp_volt(get_min_opp_for_vcore(data)),
+				  0);
+#endif
 		level = ((VCORE_OPP_NUM - data - 1) << 24);
 		dvfsrc_write(dvfsrc, DVFSRC_VCORE_REQUEST2,
 				(dvfsrc_read(dvfsrc, DVFSRC_VCORE_REQUEST2)

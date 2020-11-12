@@ -24,12 +24,19 @@
 #include <linux/of_fdt.h>
 #include <linux/vmalloc.h>
 #include <linux/power_supply.h>
-#include <linux/metricslog.h>
 #include <linux/notifier.h>
 #include <linux/suspend.h>
 #include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/amzn_integrity_module.h>
+
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#endif
+
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
 
 bool batt_metrics_first_run = 1;
 static unsigned long elaps_sec_start;

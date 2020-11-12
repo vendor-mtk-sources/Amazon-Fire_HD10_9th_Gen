@@ -31,6 +31,11 @@
 #ifdef CONFIG_AMAZON_METRICS_LOG
 #include  <linux/metricslog.h>
 #endif
+
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include  <linux/amzn_metricslog.h>
+#endif
+
 #include <linux/of_gpio.h>
 
 #include "rt551x.h"
@@ -1641,7 +1646,7 @@ static void rt551x_handler_work(struct work_struct *work)
 	{
 		schedule_work(&rt551x->hotword_work);
 		__pm_wakeup_event(&rt551x->vad_wake, 800);
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		log_counter_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel","RT5514_DSP_metrics_count","DSP_IRQ", 1, "count", NULL, VITALS_NORMAL);
 
 		log_to_metrics(ANDROID_LOG_INFO, "voice_dsp", "voice_dsp:def:DSP_IRQ=1;CT;1:NR");
@@ -1649,7 +1654,7 @@ static void rt551x_handler_work(struct work_struct *work)
 	}
 	else
 	{
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		log_counter_to_vitals(ANDROID_LOG_INFO, "Kernel", "Kernel","RT5514_DSP_metrics_count","DSP_Watchdog", 1, "count", NULL, VITALS_NORMAL);
 
 		log_to_metrics(ANDROID_LOG_INFO, "voice_dsp", "voice_dsp:def:DSP_Watchdog=1;CT;1:NR");
@@ -1990,8 +1995,10 @@ static int rt5518_hw_irq_init(struct rt551x_priv *rt551x)
 	node = of_find_matching_node(node, rt551x_match_table);
 	if (node) {
 		rt551x->hw_irq_pin = of_get_named_gpio(node, "rt5518-irq", 0);
-		if (rt551x->hw_irq_pin < 0)
+		if (rt551x->hw_irq_pin < 0) {
 			printk("[rt551x] not find rt5518-irq\n");
+			return rt551x->hw_irq_pin;
+		}
 
 	}
 	ret = gpio_request(rt551x->hw_irq_pin, "rt5518_hw_irq");

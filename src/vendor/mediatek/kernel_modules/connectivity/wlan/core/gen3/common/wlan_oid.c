@@ -8725,20 +8725,20 @@ wlanoidSetWapiKey(IN P_ADAPTER_T prAdapter, IN PVOID pvSetBuffer, IN UINT_32 u4S
 	prNewKey->ucKeyID = prNewKey->ucKeyID & BIT(0);
 
 	/* Dump P_PARAM_WPI_KEY_T content. */
-	DBGLOG(OID, TRACE, "Set: Dump P_PARAM_WPI_KEY_T content\r\n");
-	DBGLOG(OID, TRACE, "TYPE      : %d\r\n", prNewKey->eKeyType);
-	DBGLOG(OID, TRACE, "Direction : %d\r\n", prNewKey->eDirection);
-	DBGLOG(OID, TRACE, "KeyID     : %d\r\n", prNewKey->ucKeyID);
-	DBGLOG(OID, TRACE, "AddressIndex:\r\n");
+	DBGLOG(OID, TRACE, "Set: Dump P_PARAM_WPI_KEY_T content\n");
+	DBGLOG(OID, TRACE, "TYPE      : %d\n", prNewKey->eKeyType);
+	DBGLOG(OID, TRACE, "Direction : %d\n", prNewKey->eDirection);
+	DBGLOG(OID, TRACE, "KeyID     : %d\n", prNewKey->ucKeyID);
+	DBGLOG(OID, TRACE, "AddressIndex:\n");
 	DBGLOG_MEM8(OID, TRACE, prNewKey->aucAddrIndex, 12);
 	prNewKey->u4LenWPIEK = 16;
 
 	DBGLOG_MEM8(OID, TRACE, (PUINT_8) prNewKey->aucWPIEK, (UINT_8) prNewKey->u4LenWPIEK);
 	prNewKey->u4LenWPICK = 16;
 
-	DBGLOG(OID, TRACE, "CK Key(%d):\r\n", (UINT_8) prNewKey->u4LenWPICK);
+	DBGLOG(OID, TRACE, "CK Key(%d):\n", (UINT_8) prNewKey->u4LenWPICK);
 	DBGLOG_MEM8(OID, TRACE, (PUINT_8) prNewKey->aucWPICK, (UINT_8) prNewKey->u4LenWPICK);
-	DBGLOG(OID, TRACE, "PN:\r\n");
+	DBGLOG(OID, TRACE, "PN:\n");
 	if (prNewKey->eKeyType == 0) {
 		prNewKey->aucPN[0] = 0x5c;
 		prNewKey->aucPN[1] = 0x36;
@@ -9606,15 +9606,15 @@ wlanoidQueryNvramRead(IN P_ADAPTER_T prAdapter,
 
 		if (fgStatus) {
 			prNvramRwInfo->u2EepromData = u2Data;
-			DBGLOG(OID, INFO, "NVRAM Read: index=%#X, data=%#02X\r\n",
+			DBGLOG(OID, INFO, "NVRAM Read: index=%#X, data=%#02X\n",
 			       prNvramRwInfo->ucEepromIndex, u2Data);
 		} else {
-			DBGLOG(OID, ERROR, "NVRAM Read Failed: index=%#x.\r\n", prNvramRwInfo->ucEepromIndex);
+			DBGLOG(OID, ERROR, "NVRAM Read Failed: index=%#x.\n", prNvramRwInfo->ucEepromIndex);
 			rStatus = WLAN_STATUS_FAILURE;
 		}
 	} else if (prNvramRwInfo->ucEepromMethod == PARAM_EEPROM_READ_METHOD_GETSIZE) {
 		prNvramRwInfo->u2EepromData = CFG_FILE_WIFI_REC_SIZE;
-		DBGLOG(OID, INFO, "EEPROM size =%d\r\n", prNvramRwInfo->u2EepromData);
+		DBGLOG(OID, INFO, "EEPROM size =%d\n", prNvramRwInfo->u2EepromData);
 	}
 
 	*pu4QueryInfoLen = sizeof(PARAM_CUSTOM_EEPROM_RW_STRUCT_T);
@@ -9665,7 +9665,7 @@ wlanoidSetNvramWrite(IN P_ADAPTER_T prAdapter,
 				     prNvramRwInfo->u2EepromData);	/* change to byte offset */
 
 	if (fgStatus == FALSE) {
-		DBGLOG(OID, ERROR, "NVRAM Write Failed.\r\n");
+		DBGLOG(OID, ERROR, "NVRAM Write Failed.\n");
 		rStatus = WLAN_STATUS_FAILURE;
 	}
 
@@ -9779,6 +9779,11 @@ wlanoidSetCountryCode(IN P_ADAPTER_T prAdapter,
 			(u2Country != COUNTRY_CODE_IT) &&
 			(u2Country != COUNTRY_CODE_GB) &&
 			(u2Country != COUNTRY_CODE_ES) &&
+#if CFG_SUPPORT_DFS_CHANNEL /* fos_change oneline */
+			(u2Country != COUNTRY_CODE_EU) &&
+			(u2Country != COUNTRY_CODE_AU) &&
+			(u2Country != COUNTRY_CODE_NZ) &&
+#endif /* fos_change oneline */
 			(u2Country != COUNTRY_CODE_CA))
 		u2Country = COUNTRY_CODE_WW;
 

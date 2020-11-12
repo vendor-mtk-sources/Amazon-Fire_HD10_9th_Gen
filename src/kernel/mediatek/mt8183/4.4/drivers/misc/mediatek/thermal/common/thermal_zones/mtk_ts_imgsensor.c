@@ -256,8 +256,8 @@ static int mtk_imgs_get_max_temp(void)
 
 static int mtk_imgs_get_temp(struct thermal_zone_device *thermal, int *t)
 {
-	int curr_temp, index, ret;
-	MUINT8 invalid;
+	int curr_temp = -127000, index, ret;
+	MUINT8 invalid = SENSOR_TEMPERATURE_UNKNOWN_STATUS;
 
 	index = mtk_imgs_get_index(thermal);
 

@@ -32,10 +32,17 @@
 
 #ifdef CONFIG_AMAZON_METRICS_LOG
 #include <linux/metricslog.h>
+#endif
+
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 #define LMK_METRIC_TAG "kernel"
 #define METRICS_samsung_data_LEN 128
 static char g_cid_buf[40];
-#endif /* CONFIG_AMAZON_METRICS_LOG */
+#endif /* CONFIG_AMAZON_METRICS_LOG || CONFIG_AMZN_METRICS_LOG */
 
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
@@ -1477,7 +1484,7 @@ static int mmc_hs200_tuning(struct mmc_card *card)
 	return mmc_execute_tuning(card);
 }
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 static int emmcmetrics_read(struct mmc_host *host)
 {
 	int ret = 0;
@@ -1725,7 +1732,7 @@ char *mmc_get_cid(void)
 {
 	return g_cid_buf;
 }
-#endif /* CONFIG_AMAZON_METRICS_LOG */
+#endif /* CONFIG_AMAZON_METRICS_LOG || CONFIG_AMZN_METRICS_LOG */
 
 /*
  * Handle the detection and initialisation of a card.
@@ -1819,7 +1826,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		card->type = MMC_TYPE_MMC;
 		card->rca = 1;
 		memcpy(card->raw_cid, cid, sizeof(card->raw_cid));
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 		snprintf(g_cid_buf, sizeof(g_cid_buf), "%08x%08x%08x%08x",
 					cid[0], cid[1], cid[2], cid[3]);
 #endif
@@ -2559,9 +2566,9 @@ int mmc_attach_mmc(struct mmc_host *host)
 	if (err)
 		goto err;
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	metrics_delaywork_queue(host);
-#endif /* CONFIG_AMAZON_METRICS_LOG */
+#endif /* CONFIG_AMAZON_METRICS_LOG || CONFIG_AMAZON_METRICS_LOG */
 
 	mmc_release_host(host);
 

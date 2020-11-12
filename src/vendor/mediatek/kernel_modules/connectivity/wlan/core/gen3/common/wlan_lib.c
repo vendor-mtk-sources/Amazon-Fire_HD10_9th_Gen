@@ -6921,6 +6921,7 @@ VOID wlanUpdateTxStatistics(IN P_ADAPTER_T prAdapter, IN P_MSDU_INFO_T prMsduInf
 	}
 
 	/* Trigger FW stats log every 20s */
+#if CFG_DEBUG_TX_STATISTIC_STATUS
 	rCurTime = (OS_SYSTIME) kalGetTimeTick();
 
 	DBGLOG(INIT, TRACE, "CUR[%u] LAST[%u] TO[%u]\n", rCurTime,
@@ -6937,6 +6938,7 @@ VOID wlanUpdateTxStatistics(IN P_ADAPTER_T prAdapter, IN P_MSDU_INFO_T prMsduInf
 
 		prQM->rLastTxPktDumpTime = rCurTime;
 	}
+#endif
 }
 
 VOID wlanUpdateRxStatistics(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_T prSwRfb)

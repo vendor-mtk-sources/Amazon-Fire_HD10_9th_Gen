@@ -74,6 +74,10 @@
 #include <mt-plat/charging.h>
 #endif
 
+#ifdef CONFIG_AMZN_INPUT_KEYCOMBO
+#include <linux/amzn_keycombo.h>
+#endif
+
 #define RTC_NAME	"mt-rtc"
 #define RTC_RELPWR_WHEN_XRST	1	/* BBPU = 0 when xreset_rstb goes low */
 
@@ -837,6 +841,20 @@ static struct platform_device rtc_pdev = {
 	.id = -1,
 };
 
+#ifdef CONFIG_AMZN_INPUT_KEYCOMBO
+static int keycombo_notify_mark_sw_lprst(struct notifier_block *this,
+						unsigned long code, void *data)
+{
+	if (code == COMBO_FUNC_POWER_OFF)
+		rtc_mark_sw_lprst();
+	return 0;
+}
+
+static struct notifier_block keycombo_notifier = {
+	.notifier_call = keycombo_notify_mark_sw_lprst,
+};
+#endif
+
 static int __init rtc_device_init(void)
 {
 	int r;
@@ -858,8 +876,9 @@ static int __init rtc_device_init(void)
 #if (defined(MTK_GPS_MT3332))
 	hal_rtc_set_gpio_32k_status(0, true);
 #endif
-
-
+#ifdef CONFIG_AMZN_INPUT_KEYCOMBO
+	register_keycombo_notifier(&keycombo_notifier);
+#endif
 	return 0;
 }
 

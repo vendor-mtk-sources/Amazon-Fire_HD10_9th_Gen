@@ -2705,6 +2705,16 @@ static ssize_t show_gsensor_test(struct device_driver *ddri, char *buf)
 		return 0;
 	}
 
+	if (sensor_power == false) {
+		err = BMA2x2_SetPowerMode(client, true);
+		if (err)
+			GSE_ERR("Power on bma255 error %d!\n", err);
+			return snprintf(buf, PAGE_SIZE,
+				"set power mode error %d\n", err);
+	}
+
+	msleep(50);
+
 	err = BMA2x2_ReadSensorData(client, &data_x, &data_y, &data_z);
 	if (err != BMA2x2_SUCCESS) {
 		GSE_ERR("show_sensordata_value() read sensor data error!\n");

@@ -41,6 +41,13 @@
 #include <linux/of_irq.h>
 #ifdef CONFIG_AMAZON_METRICS_LOG
 #include <linux/metricslog.h>
+#endif
+
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 #include <linux/power_supply.h>
 #endif
 
@@ -53,7 +60,7 @@ static int count_irq;
 static unsigned long esd_check_circle = TPD_ESD_CHECK_CIRCLE;
 static u8 run_check_91_register;
 #endif
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 static char buffer[128];
 #endif
 
@@ -331,7 +338,7 @@ static struct i2c_driver tpd_i2c_driver = {
 	.address_list = (const unsigned short *)forces,
 };
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 static int fts_charger_exist(void)
 {
 	int ret;
@@ -377,7 +384,7 @@ static int fts_report_value(struct ts_event *data)
 	struct fts_touch_info *touch;
 	int i, x, y;
 	u8 gesture_buf[1] = { 0 };
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 	int charger_flag = 0;
 #endif
 
@@ -407,7 +414,7 @@ static int fts_report_value(struct ts_event *data)
 			input_sync(tpd->dev);
 			focal_suspend_flag = false;
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 			charger_flag = fts_charger_exist();
 			if (charger_flag >= 0) {
 				snprintf(buffer, sizeof(buffer),

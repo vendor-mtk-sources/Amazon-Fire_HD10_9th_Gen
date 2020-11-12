@@ -2096,7 +2096,7 @@ WLAN_STATUS scanProcessBeaconAndProbeResp(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_
 		rRepParams.ucRCPI = (UINT_8)HAL_RX_STATUS_GET_RCPI(prSwRfb->prRxStatusGroup3);
 		rRepParams.ucRSNI = 255; /* 255 means RSNI not available. see 7.3.2.41 */
 		rRepParams.ucFrameInfo = 0;
-		DBGLOG_MEM8(SW4, INFO, (PUINT_8) prWlanBeacon, OFFSET_OF(WLAN_BEACON_FRAME_T, aucInfoElem));
+		DBGLOG_MEM8(SW4, TRACE, (PUINT_8) prWlanBeacon, OFFSET_OF(WLAN_BEACON_FRAME_T, aucInfoElem));
 		kalMemCopy(&rRepParams.aucBcnFixedField, prWlanBeacon->au4Timestamp,
 			sizeof(rRepParams.aucBcnFixedField)); /*all 12 bytes fixedfield are copied*/
 		scanCollectBeaconReport(prAdapter, prWlanBeacon->aucInfoElem, u2IELen,
@@ -2454,7 +2454,7 @@ static WLAN_STATUS __scanProcessBeaconAndProbeResp(IN P_ADAPTER_T prAdapter, IN 
 #endif
 				) {
 				DBGLOG(SCN, INFO, "Beacon security mode change detected\n");
-				DBGLOG_MEM8(SCN, INFO, prSwRfb->pvHeader, prSwRfb->u2PacketLen);
+				DBGLOG_MEM8(SCN, TRACE, prSwRfb->pvHeader, prSwRfb->u2PacketLen);
 				fgNeedDisconnect = FALSE;
 				if (!prConnSettings->fgSecModeChangeStartTimer) {
 					cnmTimerStartTimer(prAdapter,

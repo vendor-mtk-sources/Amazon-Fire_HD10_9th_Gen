@@ -1502,41 +1502,41 @@ int m4u_debug_init(struct m4u_device *m4u_dev)
 	if (IS_ERR_OR_NULL(m4u_dev->debug_root))
 		M4UMSG("m4u: failed to create debug dir.\n");
 
-	debug_file = debugfs_create_file("buffer", 0644, m4u_dev->debug_root, domain, &m4u_debug_buf_fops);
+	debug_file = debugfs_create_file("buffer", 0600, m4u_dev->debug_root, domain, &m4u_debug_buf_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 1.\n");
 
-	debug_file = debugfs_create_file("debug", 0644, m4u_dev->debug_root, domain, &m4u_debug_fops);
+	debug_file = debugfs_create_file("debug", 0600, m4u_dev->debug_root, domain, &m4u_debug_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 2.\n");
 
 #if (M4U_DVT != 0)
-	debug_file = debugfs_create_file("test", 0644, m4u_dev->debug_root, domain, &m4u_test_fops);
+	debug_file = debugfs_create_file("test", 0600, m4u_dev->debug_root, domain, &m4u_test_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 3.\n");
 #endif
 
-	debug_file = debugfs_create_file("port", 0644, m4u_dev->debug_root, domain, &m4u_debug_port_fops);
+	debug_file = debugfs_create_file("port", 0600, m4u_dev->debug_root, domain, &m4u_debug_port_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 4.\n");
 
-	debug_file = debugfs_create_file("log_level", 0644, m4u_dev->debug_root, domain, &m4u_log_level_fops);
+	debug_file = debugfs_create_file("log_level", 0600, m4u_dev->debug_root, domain, &m4u_log_level_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 5.\n");
 
-	debug_file = debugfs_create_file("monitor", 0644, m4u_dev->debug_root, domain, &m4u_debug_monitor_fops);
+	debug_file = debugfs_create_file("monitor", 0600, m4u_dev->debug_root, domain, &m4u_debug_monitor_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 6.\n");
 
-	debug_file = debugfs_create_file("register", 0644, m4u_dev->debug_root, domain, &m4u_debug_register_fops);
+	debug_file = debugfs_create_file("register", 0600, m4u_dev->debug_root, domain, &m4u_debug_register_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 7.\n");
 
-	debug_file = debugfs_create_file("freemva", 0644, m4u_dev->debug_root, domain, &m4u_debug_freemva_fops);
+	debug_file = debugfs_create_file("freemva", 0600, m4u_dev->debug_root, domain, &m4u_debug_freemva_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 8.\n");
 
-	debug_file = debugfs_create_file("mva", 0644, m4u_dev->debug_root, domain, &m4u_debug_mva_fops);
+	debug_file = debugfs_create_file("mva", 0600, m4u_dev->debug_root, domain, &m4u_debug_mva_fops);
 	if (IS_ERR_OR_NULL(debug_file))
 		M4UMSG("m4u: failed to create debug files 9.\n");
 

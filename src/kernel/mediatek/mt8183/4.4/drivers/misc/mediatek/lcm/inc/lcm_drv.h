@@ -809,6 +809,8 @@ typedef struct {
 
 	void (*dsi_set_cmdq_V3)(LCM_setting_table_V3 *para_list, unsigned int size,
 				 unsigned char force_update);
+	void (*dsi_set_cmdq_backlight)(LCM_setting_table_V3 *para_list, unsigned int size,
+				 unsigned char force_update);
 	void (*dsi_set_cmdq_V2)(unsigned cmd, unsigned char count, unsigned char *para_list,
 				 unsigned char force_update);
 	void (*dsi_set_cmdq)(unsigned int *pdata, unsigned int queue_size,

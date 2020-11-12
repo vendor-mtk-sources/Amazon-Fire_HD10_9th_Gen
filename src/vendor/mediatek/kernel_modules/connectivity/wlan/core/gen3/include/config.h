@@ -923,6 +923,7 @@
  */
 #define CFG_SUPPORT_WAKEUP_STATISTICS       1
 #define CFG_SUPPORT_EXCEPTION_STATISTICS    1
+#define CFG_DEBUG_TX_STATISTIC_STATUS       0
 
 /*******************************************************************************
 *                             D A T A   T Y P E S

@@ -565,6 +565,16 @@ int wireless_charger_dev_set_vout_en(struct charger_device *chg_dev, bool en)
 }
 EXPORT_SYMBOL(wireless_charger_dev_set_vout_en);
 
+int wireless_charger_dev_set_wpc_en(struct charger_device *chg_dev, bool en)
+{
+	if (chg_dev != NULL && chg_dev->ops != NULL &&
+			chg_dev->ops->set_vout_en)
+		return chg_dev->ops->set_wpc_en(chg_dev, en);
+
+	return -ENOTSUPP;
+}
+EXPORT_SYMBOL(wireless_charger_dev_set_wpc_en);
+
 int charger_dev_safety_check(struct charger_device *charger_dev)
 {
 	if (charger_dev != NULL && charger_dev->ops != NULL && charger_dev->ops->safety_check)

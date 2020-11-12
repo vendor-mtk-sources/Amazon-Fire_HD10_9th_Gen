@@ -228,7 +228,7 @@ extern UINT_8 g_aucNvram[];
 #define GLUE_FLAG_HAL_MCR_WR_BIT    (17)
 #endif
 
-#ifdef CONFIG_IDME
+#if defined(CONFIG_IDME) || defined(CONFIG_AMZN_IDME)
 #define DEV_TYPE_ID_MAVERICK 0x003F
 #define DEV_TYPE_ID_TRONA 0x005E
 #endif

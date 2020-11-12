@@ -89,6 +89,8 @@ signed int g_booting_vbat;
 #if !defined(CONFIG_POWER_EXT)
 static unsigned int temperature_change = 1;
 #endif
+static int init_done;
+#define BAT_INIT_TEMP 25
 
 /* ///////////////////////////////////////////////////////////////////////////////////////// */
 /* // PMIC AUXADC Related Variable */
@@ -805,7 +807,6 @@ int __batt_meter_init_cust_data_from_dt(void)
 
 int batt_meter_init_cust_data(void)
 {
-	static int init_done;
 
 	if (init_done == 1)
 		return 0;
@@ -3348,8 +3349,13 @@ signed int battery_meter_get_car(void)
 
 signed int battery_meter_get_battery_temperature(void)
 {
+	signed int batt_temp = 0;
+
+	if (!init_done)
+		return BAT_INIT_TEMP;
+
 #ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
-	signed int batt_temp = force_get_tbat(KAL_TRUE);
+	batt_temp = force_get_tbat(KAL_TRUE);
 
 	if (batt_temp > gFG_max_temperature)
 		gFG_max_temperature = batt_temp;

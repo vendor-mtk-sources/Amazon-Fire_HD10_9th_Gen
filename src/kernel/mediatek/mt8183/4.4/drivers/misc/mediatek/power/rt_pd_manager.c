@@ -226,6 +226,9 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 				/* enable charger */
 #if CONFIG_MTK_GAUGE_VERSION == 30
 				wireless_charger_dev_force_en_charge(get_charger_by_name("wireless_chg"), false);
+				wireless_charger_dev_set_wpc_en(
+					get_charger_by_name("wireless_chg"),
+					false);
 				charger_manager_enable_power_path(chg_consumer, MAIN_CHARGER, true);
 #else
 				mtk_chr_pd_enable_power_path(1);
@@ -236,6 +239,9 @@ static int pd_tcp_notifier_call(struct notifier_block *nb,
 				if (tcpc_kpoc)
 					break;
 #if CONFIG_MTK_GAUGE_VERSION == 30
+				wireless_charger_dev_set_wpc_en(
+					get_charger_by_name("wireless_chg"),
+					true);
 				charger_manager_enable_power_path(chg_consumer, MAIN_CHARGER, false);
 #else
 				mtk_chr_pd_enable_power_path(0);

@@ -13,3 +13,4 @@ obj-$(CONFIG_MTK_MPU6050G)   += mpu6050g/
 obj-$(CONFIG_MTK_LIS3DH_NEW) += lis3dh/
 obj-$(CONFIG_MTK_BMA2XX) += bma2xx/
 obj-$(CONFIG_MTK_STK8BAXX) += stk8baxx/
+obj-$(CONFIG_MTK_DA228) += da228/

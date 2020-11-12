@@ -107,7 +107,7 @@ static void _disable_all_charging(struct charger_manager *info)
 static int adapter_power_detection_by_ocp(struct charger_manager *info)
 {
 	struct charger_data *pdata = &info->chg1_data;
-	int bak_cv_uv, bak_iusb_ua, bak_ichg_ua, bak_mivr = 0;
+	int bak_cv_uv = 0, bak_iusb_ua = 0, bak_ichg_ua = 0, bak_mivr = 0;
 	int cv_uv = info->data.battery_cv;
 	int iusb_ua = info->power_detection.aicl_trigger_iusb;
 	int ichg_ua = info->power_detection.aicl_trigger_ichg;

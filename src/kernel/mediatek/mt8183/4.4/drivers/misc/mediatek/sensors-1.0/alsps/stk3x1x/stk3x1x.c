@@ -3078,7 +3078,7 @@ static int stk3x1x_resume(struct device *dev)
 static int stk3x1x_i2c_detect(struct i2c_client *client,
 		struct i2c_board_info *info)
 {
-	strcpy(info->type, stk3x1x_DEV_NAME);
+	strncpy(info->type, stk3x1x_DEV_NAME, sizeof(info->type));
 	return 0;
 }
 

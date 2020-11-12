@@ -1098,7 +1098,7 @@ int mmc_gen_cmd(struct mmc_card *card, void *buf,
 	return 0;
 }
 
-#ifdef CONFIG_AMAZON_METRICS_LOG
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
 int mmc_samsung_report(struct mmc_card *card, u8 *buf)
 {
 	int err;
@@ -1203,6 +1203,6 @@ int mmc_micron_smart_report(struct mmc_card *card, u8 *buf)
 	pr_info("reading complete ret:0x%x\n", ret);
 	return ret;
 }
-#endif /* CONFIG_AMAZON_METRICS_LOG */
+#endif /* CONFIG_AMAZON_METRICS_LOG || CONFIG_AMZN_METRICS_LOG*/
 #endif /* CONFIG_MMC_SAMSUNG_SMART */
 

@@ -33,6 +33,21 @@
 #include <linux/uidgid.h>
 #include <tmp_bts.h>
 #include <linux/slab.h>
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+#include "mt-plat/charger_class.h"
+#endif
+
+#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
+#include <linux/sign_of_life.h>
+#endif
+
+#ifdef CONFIG_AMZN_SIGN_OF_LIFE
+#include <linux/amzn_sign_of_life.h>
+#endif
+
+#if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
+#include <linux/thermal_framework.h>
+#endif
 
 /*=============================================================
  *Weak functions
@@ -811,6 +826,31 @@ static int mtkts_bts2_get_crit_temp(struct thermal_zone_device *thermal,
 	return 0;
 }
 
+#if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
+static int mtkts_bts2_thermal_notify(struct thermal_zone_device *thermal,
+					int trip, enum thermal_trip_type type)
+{
+	if (type == THERMAL_TRIP_CRITICAL) {
+#if defined(CONFIG_AMAZON_SIGN_OF_LIFE) || defined(CONFIG_AMZN_SIGN_OF_LIFE)
+		pr_err("[%s][%s]type:[%s] Thermal shutdown mtktsPCB2[%d], current temp=%d, trip=%d, trip_temp=%d\n",
+			__func__, dev_name(&thermal->device), thermal->type, g_RAP_ADC_channel,
+			thermal->temperature, trip, trip_temp[trip]);
+		life_cycle_set_thermal_shutdown_reason(THERMAL_SHUTDOWN_REASON_BTS);
+#endif
+
+		pr_err("%s: thermal_shutdown notify\n", __func__);
+		last_kmsg_thermal_shutdown();
+		pr_err("%s: thermal_shutdown notify end\n", __func__);
+
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+		set_shutdown_enable_dcap(&thermal->device);
+#endif
+	}
+
+	return 0;
+}
+#endif
+
 /* bind callback functions to thermalzone */
 static struct thermal_zone_device_ops mtkts_bts2_dev_ops = {
 	.bind = mtkts_bts2_bind,
@@ -821,6 +861,9 @@ static struct thermal_zone_device_ops mtkts_bts2_dev_ops = {
 	.get_trip_type = mtkts_bts2_get_trip_type,
 	.get_trip_temp = mtkts_bts2_get_trip_temp,
 	.get_crit_temp = mtkts_bts2_get_crit_temp,
+#if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
+	.notify = mtkts_bts2_thermal_notify,
+#endif
 };
 
 
@@ -1271,11 +1314,20 @@ static int mtkts_bts2_register_thermal(void)
 {
 	mtkts_bts2_dprintk("[mtkts_bts2_register_thermal]\n");
 
-	/* trips : trip 0~1 */
-	thz_dev = mtk_thermal_zone_device_register("mtktsPCB2", num_trip, NULL,
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+	if (get_charger_by_name("wireless_chg") != NULL) {
+#endif
+		/* trips : trip 0~1 */
+		thz_dev = mtk_thermal_zone_device_register("mtktsPCB2", num_trip, NULL,
 							&mtkts_bts2_dev_ops,
 							0, 0, 0,
 							interval * 1000);
+#ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
+		mtkts_bts2_printk("[%s] register mtktsPCB2\n", __func__);
+	} else {
+		mtkts_bts2_printk("[%s] not register mtktsPCB2\n", __func__);
+	}
+#endif
 
 	return 0;
 }

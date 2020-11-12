@@ -3129,7 +3129,7 @@ BOOLEAN kalRetrieveNetworkAddress(IN P_GLUE_INFO_T prGlueInfo, IN OUT PARAM_MAC_
 	ASSERT(prGlueInfo);
 
 	if (prGlueInfo->fgIsMacAddrOverride == FALSE) {
-#ifdef CONFIG_IDME
+#if defined(CONFIG_IDME) || defined(CONFIG_AMZN_IDME)
 		COPY_MAC_ADDR(prMacAddr, &prGlueInfo->rRegInfo.aucMacAddr);
 		return TRUE;
 #else

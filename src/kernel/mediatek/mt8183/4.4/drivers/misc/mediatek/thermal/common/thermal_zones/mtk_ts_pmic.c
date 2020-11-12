@@ -36,6 +36,10 @@
 #include <linux/sign_of_life.h>
 #endif
 
+#ifdef CONFIG_AMZN_SIGN_OF_LIFE
+#include <linux/amzn_sign_of_life.h>
+#endif
+
 #if defined(CONFIG_VIRTUAL_SENSOR_THERMAL) || defined(CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR)
 #include <linux/thermal_framework.h>
 #endif
@@ -234,7 +238,7 @@ static int mtktspmic_get_crit_temp(struct thermal_zone_device *thermal, int *tem
 static int mtktspmic_thermal_notify(struct thermal_zone_device *thermal,
 				int trip, enum thermal_trip_type type)
 {
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
+#if defined(CONFIG_AMAZON_SIGN_OF_LIFE) || defined(CONFIG_AMZN_SIGN_OF_LIFE)
 	if (type == THERMAL_TRIP_CRITICAL) {
 		pr_err("[%s][%s]type:[%s] Thermal shutdown PMIC, current temp=%d, trip=%d, trip_temp=%d\n",
 			__func__, dev_name(&thermal->device), thermal->type,
@@ -304,7 +308,7 @@ static int tspmic_sysrst_set_cur_state(struct thermal_cooling_device *cdev, unsi
 			}
 		}
 
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
+#if defined(CONFIG_AMAZON_SIGN_OF_LIFE) || defined(CONFIG_AMZN_SIGN_OF_LIFE)
 		life_cycle_set_thermal_shutdown_reason(THERMAL_SHUTDOWN_REASON_PMIC);
 #endif
 		kernel_restart(NULL);

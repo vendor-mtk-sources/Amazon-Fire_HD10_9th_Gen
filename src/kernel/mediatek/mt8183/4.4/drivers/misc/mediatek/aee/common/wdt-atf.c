@@ -56,6 +56,10 @@
 #include <linux/sign_of_life.h>
 #endif
 
+#ifdef CONFIG_AMZN_SIGN_OF_LIFE
+#include <linux/amzn_sign_of_life.h>
+#endif
+
 #define THREAD_INFO(sp) ((struct thread_info *) \
 				((unsigned long)(sp) & ~(THREAD_SIZE - 1)))
 
@@ -579,7 +583,7 @@ void aee_wdt_atf_info(unsigned int cpu, struct pt_regs *regs)
 #endif
 		__mrdump_create_oops_dump(AEE_REBOOT_MODE_WDT, regs, "WDT/HWT");
 
-#ifdef CONFIG_AMAZON_SIGN_OF_LIFE
+#if defined(CONFIG_AMAZON_SIGN_OF_LIFE) || defined(CONFIG_AMZN_SIGN_OF_LIFE)
 	life_cycle_set_boot_reason(WARMBOOT_BY_KERNEL_WATCHDOG);
 #endif
 

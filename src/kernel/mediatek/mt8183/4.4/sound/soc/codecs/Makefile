@@ -100,7 +100,9 @@ snd-soc-rt5670-objs := rt5670.o
 snd-soc-rt5677-objs := rt5677.o
 snd-soc-rt5677-spi-objs := rt5677-spi.o
 snd-soc-rt551x-objs := rt551x.o
+snd-soc-rt551x-adf-objs := rt551x-adf.o
 snd-soc-rt551x-spi-objs := rt551x-spi.o
+snd-soc-rt551x-adf-spi-objs := rt551x-adf-spi.o
 snd-soc-sgtl5000-objs := sgtl5000.o
 snd-soc-alc5623-objs := alc5623.o
 snd-soc-alc5632-objs := alc5632.o
@@ -301,8 +303,6 @@ obj-$(CONFIG_SND_SOC_RT5651)	+= snd-soc-rt5651.o
 obj-$(CONFIG_SND_SOC_RT5670)	+= snd-soc-rt5670.o
 obj-$(CONFIG_SND_SOC_RT5677)	+= snd-soc-rt5677.o
 obj-$(CONFIG_SND_SOC_RT5677_SPI)	+= snd-soc-rt5677-spi.o
-obj-$(CONFIG_SND_SOC_RT551X)	+= snd-soc-rt551x.o
-obj-$(CONFIG_SND_SOC_RT551X_SPI)	+= snd-soc-rt551x-spi.o
 obj-$(CONFIG_SND_SOC_SGTL5000)  += snd-soc-sgtl5000.o
 obj-$(CONFIG_SND_SOC_SIGMADSP)	+= snd-soc-sigmadsp.o
 obj-$(CONFIG_SND_SOC_SIGMADSP_I2C)	+= snd-soc-sigmadsp-i2c.o
@@ -401,6 +401,18 @@ obj-$(CONFIG_SND_SOC_CS4382A)	+= cs4382a.o
 obj-$(CONFIG_SND_SOC_MAX9877)	+= snd-soc-max9877.o
 obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
 obj-$(CONFIG_SND_SOC_RT5509)	+= snd-soc-rt5509.o
+
+# Adf dsp firmware
+obj-$(CONFIG_SND_SOC_RT551X_ADF) += snd-soc-rt551x-adf.o
+obj-$(CONFIG_SND_SOC_RT551X_ADF) += snd-soc-rt551x-adf-spi.o
+ifeq ($(CONFIG_SND_SOC_RT551X_ADF),y)
+  obj-y    += amazon/
+  subdir-ccflags-y += -I$(src)/amazon/include/
+endif
+
+# Old dsp firmware
+obj-$(CONFIG_SND_SOC_RT551X) += snd-soc-rt551x.o
+obj-$(CONFIG_SND_SOC_RT551X_SPI) += snd-soc-rt551x-spi.o
 
 ifeq ($(CONFIG_SND_SOC_MT6358),y)
   # MTK Platform Support
