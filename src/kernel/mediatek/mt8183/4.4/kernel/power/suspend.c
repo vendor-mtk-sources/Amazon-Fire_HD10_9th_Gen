@@ -482,8 +482,8 @@ static void suspend_finish(void)
 #if MTK_SOLUTION
 
 #define SYS_SYNC_TIMEOUT 2000
-
 static int sys_sync_ongoing;
+static DECLARE_WAIT_QUEUE_HEAD(sys_sync_wq);
 
 static void suspend_sys_sync(struct work_struct *work);
 static struct workqueue_struct *suspend_sys_sync_work_queue;
@@ -495,37 +495,31 @@ static void suspend_sys_sync(struct work_struct *work)
 	sys_sync();
 	sys_sync_ongoing = 0;
 	pr_debug("--\n");
+	wake_up(&sys_sync_wq);
 }
 
 int suspend_syssync_enqueue(void)
 {
-	int timeout = 0;
-
 	if (suspend_sys_sync_work_queue == NULL) {
 		suspend_sys_sync_work_queue = create_singlethread_workqueue("fs_suspend_syssync");
 		if (suspend_sys_sync_work_queue == NULL)
 			pr_err("fs_suspend_syssync workqueue create failed\n");
 	}
 
-	while (timeout < SYS_SYNC_TIMEOUT) {
-		if (!sys_sync_ongoing)
-			break;
-		msleep(100);
-		timeout += 100;
-	}
+	wait_event_timeout(sys_sync_wq, !sys_sync_ongoing,
+			   msecs_to_jiffies(SYS_SYNC_TIMEOUT));
 
 	if (!sys_sync_ongoing) {
 		sys_sync_ongoing = 1;
 		queue_work(suspend_sys_sync_work_queue, &suspend_sys_sync_work);
-		while (timeout < SYS_SYNC_TIMEOUT) {
-			if (!sys_sync_ongoing)
-				return 0;
-			msleep(100);
-			timeout += 100;
-		}
-	}
-
-	return -EBUSY;
+		wait_event_timeout(sys_sync_wq, !sys_sync_ongoing,
+				   msecs_to_jiffies(SYS_SYNC_TIMEOUT));
+		if (!sys_sync_ongoing)
+			return 0;
+		else
+			return -EBUSY;
+	} else
+		return -EBUSY;
 }
 
 #endif

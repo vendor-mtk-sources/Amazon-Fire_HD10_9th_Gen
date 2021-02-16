@@ -51,3 +51,11 @@ config MTK_RAM_CONSOLE_DRAM_ADDR
 	depends on MTK_RAM_CONSOLE
 	help
 	  DRAM ram_console address.
+
+config MTK_AEE_SAVE_DEBUGINFO_RESERVED_BUFFER
+	bool "saving platform debuginfo in console buffer"
+	default n
+	depends on MTK_RAM_CONSOLE
+	help
+	  If set this config as yes, will save the debuginfo by platform
+	  to proc file.

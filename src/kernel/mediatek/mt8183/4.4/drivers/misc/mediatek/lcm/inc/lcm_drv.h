@@ -793,6 +793,14 @@ typedef struct {
 	unsigned char para_list[128];
 } LCM_setting_table_V3;
 
+struct LCM_setting_table_V4 {
+	unsigned char id;
+	unsigned char cmd;
+	unsigned char count;
+	unsigned char para_list[128];
+	unsigned int flag;
+};
+
 typedef struct {
 	void (*set_reset_pin)(unsigned int value);
 	void (*set_chip_select)(unsigned int value);
@@ -811,6 +819,10 @@ typedef struct {
 				 unsigned char force_update);
 	void (*dsi_set_cmdq_backlight)(LCM_setting_table_V3 *para_list, unsigned int size,
 				 unsigned char force_update);
+	void (*dsi_set_cmdq_V4)(struct LCM_setting_table_V4 *para_list,
+				unsigned int size, unsigned char force_update);
+	int (*dsi_get_cmdq_V4)(struct LCM_setting_table_V4 *para_list,
+				unsigned int size, unsigned char force_update);
 	void (*dsi_set_cmdq_V2)(unsigned cmd, unsigned char count, unsigned char *para_list,
 				 unsigned char force_update);
 	void (*dsi_set_cmdq)(unsigned int *pdata, unsigned int queue_size,

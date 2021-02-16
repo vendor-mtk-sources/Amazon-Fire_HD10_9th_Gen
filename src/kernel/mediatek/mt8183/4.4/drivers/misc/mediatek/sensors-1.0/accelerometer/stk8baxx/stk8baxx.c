@@ -753,6 +753,8 @@ static char stk_testOffsetNoise(struct stk8baxx_data *stk)
 	if (stk_range_selection(stk, range_def))
 		return -1;
 
+	msleep(20);
+
 	thresholdOffset = stk_selftest_offset_factor(stk->sensitivity);
 	thresholdNoise = stk_selftest_noise_factor(stk->sensitivity);
 

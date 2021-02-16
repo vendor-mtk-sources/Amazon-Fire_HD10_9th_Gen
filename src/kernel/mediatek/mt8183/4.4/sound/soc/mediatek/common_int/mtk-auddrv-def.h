@@ -255,6 +255,7 @@
 #define MT_SOC_ANC_RECORD_DAI_NAME "mt-soc-anc-record-dai-driver"
 #define MT_SOC_OFFLOAD_PLAYBACK_DAI_NAME "mt-soc-offload-playback-dai-driver"
 #define MT_SOC_VOW_BARGE_IN_NAME "mt-soc-vowbargein-driver"
+#define MT_SOC_HW_MERGR_DAI_NAME "mtk-soc-pcm-hw-merge-dai-driver"
 
 /* platform name */
 #define MT_SOC_DL1_PCM   "mt-soc-dl1-pcm"
@@ -301,6 +302,7 @@
 #define MT_SOC_ANC_PCM   "mt-soc-anc-pcm"
 #define MT_SOC_PLAYBACK_OFFLOAD  "mt-soc-playback-offload"
 #define MT_SOC_VOW_BARGE_IN_PCM  "mt-soc-vow-barge-in-pcm"
+#define MT_SOC_HW_MERGE_PCM "mtk-soc-pcm-hw-merge-capture"
 
 /* codec dai name */
 #define MT_SOC_CODEC_TXDAI_NAME "mt-soc-codec-tx-dai"
@@ -392,5 +394,6 @@
 #define MT_SOC_ANC_STREAM_NAME "ANC_Playback"
 #define MT_SOC_ANC_RECORD_STREAM_NAME "ANC_Record"
 #define MT_SOC_VOW_BARGE_IN_STREAM_NAME "VOW_Barge_In_Capture"
+#define MT_SOC_HW_MERGR_STREAM_NAME "HW_MERGR_Capture"
 
 #endif

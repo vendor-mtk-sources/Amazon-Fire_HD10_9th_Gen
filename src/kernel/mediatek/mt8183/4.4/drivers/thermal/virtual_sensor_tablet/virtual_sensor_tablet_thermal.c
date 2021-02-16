@@ -64,6 +64,159 @@ static unsigned int virtual_sensor_nums;
 
 static struct vs_thermal_platform_data *virtual_sensor_thermal_data;
 
+#ifdef CONFIG_THERMAL_FOD
+#include "mt-plat/charger_type.h"
+#include "mt-plat/charger_class.h"
+#include <linux/of_platform.h>
+
+#define FOD_THERMAL_NAME "virtual_sensor4"
+struct pinctrl *fod_vs_pctl;
+struct fod_algo *g_fod;
+
+static struct timeval timer_start;
+static struct timeval timer_now;
+static long calculate_raising_rate(int data, int delay)
+{
+	int slope = 0;
+	struct vs_temp_data *temp_add;
+	struct vs_temp_data *temp_next;
+	int temp_first, temp_last;
+	int period = 0;
+
+	fod_printk("%s\n", __func__);
+	if (!delay)
+		return slope;
+
+	if (!g_fod->fod_temp_cnt) {
+		if (!timer_start.tv_sec || !timer_start.tv_usec) {
+			do_gettimeofday(&timer_start);
+			return slope;
+		} else {
+			do_gettimeofday(&timer_now);
+			period = timer_now.tv_sec - timer_start.tv_sec;
+			fod_printk("wait %d sec to start\n", period);
+			if (period < g_fod->work_delay)
+				return slope;
+		}
+	}
+
+	fod_printk("start to store temperature\n");
+
+	temp_add = list_entry(g_fod->cur_list, struct vs_temp_data, list);
+	temp_add->temperature = data;
+
+	if (g_fod->fod_temp_cnt <= (g_fod->window_size-1)) {
+		g_fod->cur_list = g_fod->cur_list->next;
+		g_fod->fod_temp_cnt++;
+		fod_printk("TEMP = %d, g_fod->fod_temp_cnt = %d\n", data, g_fod->fod_temp_cnt);
+		return slope;
+	}
+
+	temp_last = data;
+	g_fod->cur_list = g_fod->cur_list->next;
+	temp_next = container_of(g_fod->cur_list, struct vs_temp_data, list);
+	temp_first = temp_next->temperature;
+	fod_printk("Count: %d, TEMP[fisrt, last] = [%d, %d]\n", (g_fod->fod_temp_cnt+1), temp_first, temp_last);
+	return (temp_last - temp_first)*60/(int)(delay*(g_fod->window_size-1)/DMF);
+}
+
+static void wpc_online_work(struct work_struct *work)
+{
+	int i;
+	struct thermal_zone_device *thermal;
+	struct virtual_sensor_thermal_zone *tzone;
+	struct vs_thermal_platform_data *pdata;
+	struct vs_temp_data *temp_next;
+	struct thermal_dev *tdev;
+
+	thermal = thermal_zone_get_zone_by_name(FOD_THERMAL_NAME);
+	if (IS_ERR(thermal) || !(thermal->devdata)) {
+		pr_err("[FOD_INFO]: thermal:%p or thermal->devdata is NULL!\n", thermal);
+		return ;
+	}
+	tzone = thermal->devdata;
+	pdata = tzone->pdata;
+	if (!pdata) {
+		pr_err("[FOD_INFO]: tzone->pdata is NULL!\n");
+		return ;
+	}
+
+	mutex_lock(&therm_lock);
+	if (g_fod->wpc_online_status) {
+		pdata->mode = THERMAL_DEVICE_ENABLED;
+		mutex_lock(&tzone->tz->lock);
+		if (!tzone->tz->polling_delay)
+			tzone->tz->polling_delay = g_fod->polling_interval;
+		for (i = 0; i < thermal->tzp->num_tbps; i++) {
+			if (thermal->tzp->tbp[i].cdev) {
+				if (!strcmp(thermal->tzp->tbp[i].cdev->type, "wpc_bcct1")) {
+					struct vs_cooler_platform_data *pdata;
+					pdata = thermal->tzp->tbp[i].cdev->devdata;
+					pdata->state = 0;
+					break;
+				}
+			}
+		}
+		mutex_unlock(&tzone->tz->lock);
+		fod_printk("wpc is online, polling_delay = %d, vs mode = %d\n",
+				thermal->polling_delay, pdata->mode);
+		schedule_work(&tzone->therm_work);
+	} else {
+		pdata->mode = THERMAL_DEVICE_DISABLED;
+		if (!g_fod->polling_interval)
+			g_fod->polling_interval = tzone->tz->polling_delay;
+		fod_printk("wpc is not online, polling_delay = %d, vs mode = %d\n",
+				thermal->polling_delay, pdata->mode);
+		mutex_lock(&tzone->tz->lock);
+		cancel_delayed_work(&tzone->tz->poll_queue);
+		tzone->tz->polling_delay = 0;
+		mutex_unlock(&tzone->tz->lock);
+
+		list_for_each_entry(tdev, &pdata->ts_list, node) {
+			tdev->first_data_get = 0;
+		}
+
+		mutex_lock(&g_fod->fod_lock);
+		temp_next = list_first_entry(&g_fod->fod_temp.list, struct vs_temp_data, list);
+		g_fod->cur_list = &temp_next->list;
+		memset(&timer_start, 0, sizeof(struct timeval));
+		memset(&timer_now, 0, sizeof(struct timeval));
+		if (g_fod->fod_temp_cnt)
+			g_fod->fod_temp_cnt = 0;
+		mutex_unlock(&g_fod->fod_lock);
+	}
+	mutex_unlock(&therm_lock);
+}
+
+static int wpc_online_event(struct notifier_block *nb, unsigned long event, void *v)
+{
+	struct power_supply *psy = v;
+	union power_supply_propval propval;
+	int ret;
+
+	if (unlikely(system_state < SYSTEM_RUNNING))
+		return NOTIFY_OK;
+
+	if (event == PSY_EVENT_PROP_CHANGED && strcmp(psy->desc->name, "Wireless") == 0) {
+		g_fod->psy = psy;
+		ret = power_supply_get_property(g_fod->psy, POWER_SUPPLY_PROP_ONLINE, &propval);
+		if (ret < 0) {
+			pr_err("[FOD_INFO]: get psy online failed, ret = %d\n", __func__, ret);
+			return NOTIFY_OK;
+		} else {
+			if (g_fod->wpc_online_status != propval.intval) {
+				g_fod->wpc_online_status = propval.intval;
+				queue_delayed_work(system_freezable_wq, &g_fod->wpc_event_wq, 0);
+				pr_info("[FOD_INFO] %s, online statue = %d\n", __func__, g_fod->wpc_online_status);
+			}
+		}
+	}
+
+	return NOTIFY_OK;
+}
+
+#endif /* CONFIG_THERMAL_FOD is defined */
+
 int init_vs_thermal_platform_data(void)
 {
 	int i, ret = 0;
@@ -87,7 +240,6 @@ int init_vs_thermal_platform_data(void)
 
 	for (i = 0; i < virtual_sensor_nums; i++)
 		INIT_LIST_HEAD(&virtual_sensor_thermal_data[i].ts_list);
-
 out:
 	return ret;
 }
@@ -192,6 +344,9 @@ static int virtual_sensor_thermal_get_temp(struct thermal_zone_device *thermal,
 	long temp = 0;
 	long tempv = 0;
 	int alpha, offset, weight;
+#ifdef CONFIG_THERMAL_FOD
+	int wpc_ntc_temp = 0;
+#endif
 #ifdef CONFIG_AMZN_METRICS_LOG
 	char buf[VIRTUAL_SENSOR_METRICS_STR_LEN];
 #endif
@@ -206,6 +361,13 @@ static int virtual_sensor_thermal_get_temp(struct thermal_zone_device *thermal,
 		pr_err("%s pdata is NULL!\n", __func__);
 		return -EINVAL;
 	}
+
+#ifdef CONFIG_THERMAL_FOD
+	if (!strncmp(thermal->type, FOD_THERMAL_NAME, strlen(FOD_THERMAL_NAME))) {
+		if (strncmp(current->comm, "kworker", strlen("kworker")))
+			return -EINVAL;
+	}
+#endif
 
 #ifdef CONFIG_AMZN_METRICS_LOG
 	atomic_inc(&tzone->query_count);
@@ -225,12 +387,24 @@ static int virtual_sensor_thermal_get_temp(struct thermal_zone_device *thermal,
 			log_to_metrics(ANDROID_LOG_INFO, "ThermalEvent", buf);
 		}
 #endif
-
+#ifdef CONFIG_THERMAL_FOD
+		if (!strncmp(thermal->type, FOD_THERMAL_NAME, strlen(FOD_THERMAL_NAME))
+				&& tdev->tdp->weight) {
+			fod_printk("[%s, %d]\n", tdev->name, temp);
+			wpc_ntc_temp = temp;
+			mutex_lock(&g_fod->fod_lock);
+			temp = calculate_raising_rate(temp, thermal->polling_delay);
+			mutex_unlock(&g_fod->fod_lock);
+			fod_printk("%s_slope = %d\n", tdev->name, temp);
+		}
+#endif
 		alpha = tdev->tdp->alpha;
 		offset = tdev->tdp->offset;
 		weight = tdev->tdp->weight;
-		if (!tdev->off_temp)
+		if (!tdev->first_data_get) {
 			tdev->off_temp = temp - offset;
+			tdev->first_data_get = 1;
+		}
 		else {
 			tdev->off_temp = alpha * (temp - offset) +
 			    (DMF - alpha) * tdev->off_temp;
@@ -238,6 +412,13 @@ static int virtual_sensor_thermal_get_temp(struct thermal_zone_device *thermal,
 		}
 
 		tempv += (weight * tdev->off_temp) / DMF;
+#ifdef CONFIG_THERMAL_FOD
+		if (!strncmp(thermal->type, FOD_THERMAL_NAME, strlen(FOD_THERMAL_NAME))
+				&& tdev->tdp->weight) {
+			fod_printk("[%s, %s_slope, VS4_temp] = [%d, %d, %d]\n",
+					tdev->name, tdev->name, wpc_ntc_temp, temp, tempv);
+		}
+#endif
 	}
 
 #ifdef CONFIG_AMZN_METRICS_LOG
@@ -294,6 +475,7 @@ static int virtual_sensor_thermal_set_mode(struct thermal_zone_device *thermal,
 {
 	struct virtual_sensor_thermal_zone *tzone;
 	struct vs_thermal_platform_data *pdata;
+	struct thermal_dev *tdev;
 
 	if (!thermal || !(thermal->devdata)) {
 		pr_err("%s thermal:%p or thermal->devdata is NULL!\n", __func__, thermal);
@@ -307,10 +489,21 @@ static int virtual_sensor_thermal_set_mode(struct thermal_zone_device *thermal,
 	}
 
 	mutex_lock(&therm_lock);
+#ifdef CONFIG_THERMAL_FOD
+	if (!strncmp(thermal->type, FOD_THERMAL_NAME, strlen(FOD_THERMAL_NAME))) {
+		if (!g_fod->wpc_online_status)
+			mode = THERMAL_DEVICE_DISABLED;
+	}
+#endif
 	pdata->mode = mode;
 	if (mode == THERMAL_DEVICE_DISABLED) {
+		mutex_lock(&tzone->tz->lock);
 		tzone->tz->polling_delay = 0;
+		mutex_unlock(&tzone->tz->lock);
 		thermal_zone_device_update(tzone->tz);
+		list_for_each_entry(tdev, &pdata->ts_list, node) {
+			tdev->first_data_get = 0;
+		}
 		mutex_unlock(&therm_lock);
 		return 0;
 	}
@@ -637,6 +830,9 @@ static ssize_t polling_store(struct device *dev, struct device_attribute *attr,
 	    container_of(dev, struct thermal_zone_device, device);
 	struct virtual_sensor_thermal_zone *tzone;
 	struct vs_thermal_platform_data *pdata;
+#ifdef CONFIG_THERMAL_FOD
+	bool wpc_online = false;
+#endif
 
 	if (!thermal || !(thermal->devdata)) {
 		pr_err("%s thermal:%p or thermal->devdata is NULL!\n", __func__, thermal);
@@ -654,12 +850,88 @@ static ssize_t polling_store(struct device *dev, struct device_attribute *attr,
 	if (polling_delay < 0)
 		return -EINVAL;
 
+	mutex_lock(&therm_lock);
 	pdata->polling_delay = polling_delay;
 	thermal->polling_delay = pdata->polling_delay;
-	thermal_zone_device_update(thermal);
+#ifdef CONFIG_THERMAL_FOD
+	if (!strncmp(thermal->type, FOD_THERMAL_NAME, strlen(FOD_THERMAL_NAME))) {
+		g_fod->polling_interval = polling_delay;
+		wireless_charger_dev_get_online(get_charger_by_name("wireless_chg"), &wpc_online);
+		if (wpc_online)
+			thermal_zone_device_update(thermal);
+	} else
+#endif
+		thermal_zone_device_update(thermal);
+	mutex_unlock(&therm_lock);
 	return count;
 }
 
+#ifdef CONFIG_THERMAL_FOD
+static ssize_t fod_delay_show(struct device *dev, struct device_attribute *attr,
+				char *buf)
+{
+	return scnprintf(buf, BUF_SIZE, "%d\n", g_fod->work_delay);
+}
+
+static ssize_t fod_delay_store(struct device *dev, struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	unsigned int delay = 0;
+
+	if (kstrtouint(buf, 0, &delay))
+		return -EINVAL;
+
+	g_fod->work_delay = delay;
+
+	return count;
+}
+
+static ssize_t window_size_show(struct device *dev, struct device_attribute *attr,
+				char *buf)
+{
+	return scnprintf(buf, BUF_SIZE, "%d\n", g_fod->window_size);
+}
+
+static ssize_t window_size_store(struct device *dev, struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	unsigned int size = 0;
+	struct vs_temp_data *temp_data, *ptr;
+	int i;
+
+	if (kstrtouint(buf, 0, &size))
+		return -EINVAL;
+
+	if (size < 2) {
+		pr_err("%s Error setting value is less than 2\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&g_fod->fod_lock);
+	list_for_each_entry_safe(temp_data, ptr, &g_fod->fod_temp.list, list) {
+		list_del(&temp_data->list);
+		kfree(temp_data);
+	}
+	g_fod->window_size = size;
+
+	g_fod->cur_list = &g_fod->fod_temp.list;
+	for (i = 1; i < g_fod->window_size; i++) {
+		ptr = kzalloc(sizeof(struct vs_temp_data), GFP_KERNEL);
+		if (!ptr) {
+			pr_err("%s Failed to allocate vs_temp_data memory\n",
+				__func__);
+			return -ENOMEM;
+		}
+		list_add_tail(&ptr->list, &g_fod->fod_temp.list);
+	}
+	g_fod->fod_temp_cnt = 0;
+	mutex_unlock(&g_fod->fod_lock);
+	return count;
+}
+
+static DEVICE_ATTR(fod_delay, 0644, fod_delay_show, fod_delay_store);
+static DEVICE_ATTR(fod_window_size, 0644, window_size_show, window_size_store);
+#endif
 static DEVICE_ATTR(trips, 0644, trips_show, trips_store);
 static DEVICE_ATTR(polling, 0644, polling_show, polling_store);
 static DEVICE_ATTR(params, 0444, params_show, NULL);
@@ -668,6 +940,9 @@ static int virtual_sensor_create_sysfs(struct virtual_sensor_thermal_zone
 				       *tzone)
 {
 	int ret = 0;
+#ifdef CONFIG_THERMAL_FOD
+	struct thermal_zone_device *tz;
+#endif
 
 	ret = device_create_file(&tzone->tz->device, &dev_attr_params);
 	if (ret)
@@ -678,6 +953,22 @@ static int virtual_sensor_create_sysfs(struct virtual_sensor_thermal_zone
 	ret = device_create_file(&tzone->tz->device, &dev_attr_trips);
 	if (ret)
 		pr_err("%s Failed to create trips attr\n", __func__);
+#ifdef CONFIG_THERMAL_FOD
+	if (get_charger_by_name("wireless_chg") != NULL) {
+		tz = thermal_zone_get_zone_by_name(FOD_THERMAL_NAME);
+		if (IS_ERR(tz)) {
+			pr_err("[FOD_INFO]: thermal:%p  is NULL!\n", tz);
+			tz = NULL;
+		} else {
+			ret = device_create_file(&tzone->tz->device, &dev_attr_fod_delay);
+			if (ret)
+				pr_err("%s Failed to create fod_delay attr\n", __func__);
+			ret = device_create_file(&tzone->tz->device, &dev_attr_fod_window_size);
+			if (ret)
+				pr_err("%s Failed to create fod_window_size attr\n", __func__);
+		}
+	}
+#endif
 	return ret;
 }
 
@@ -909,10 +1200,19 @@ static int virtual_sensor_thermal_init_cust_data_from_dt(struct platform_device
 
 	dev->id = 0;
 	thermal_parse_node_int(np, "dev_id", &dev->id);
-	if (dev->id < virtual_sensor_nums)
+	if (dev->id < virtual_sensor_nums) {
 		p_virtual_sensor_thermal_data =
 		    &virtual_sensor_thermal_data[dev->id];
-	else {
+#ifdef CONFIG_THERMAL_FOD
+		if (dev->id == FOD_VS_DEVICEID) {
+			fod_vs_pctl = devm_pinctrl_get(&dev->dev);
+			if (IS_ERR(fod_vs_pctl)) {
+				pr_err("%s: Cannot find pinctrl for FOD VS\n", __func__);
+				return -ENODEV;
+			}
+		}
+#endif
+	} else {
 		ret = -1;
 		pr_err("dev->id invalid!\n");
 		return ret;
@@ -1045,7 +1345,10 @@ static int virtual_sensor_thermal_probe(struct platform_device *pdev)
 	ret = virtual_sensor_create_sysfs(tzone);
 	INIT_WORK(&tzone->therm_work, virtual_sensor_thermal_work);
 	platform_set_drvdata(pdev, tzone);
-	pdata->mode = THERMAL_DEVICE_ENABLED;
+	if (!tzone->tz->polling_delay)
+		pdata->mode = THERMAL_DEVICE_DISABLED;
+	else
+		pdata->mode = THERMAL_DEVICE_ENABLED;
 	return ret;
 }
 
@@ -1115,23 +1418,113 @@ static struct platform_driver virtual_sensor_thermal_zone_driver = {
 		   },
 };
 
+#ifdef CONFIG_THERMAL_FOD
+static void virtual_sensor_fod_remove(void)
+{
+	struct vs_temp_data *temp_data, *ptr;
+
+	list_for_each_entry_safe(temp_data, ptr, &g_fod->fod_temp.list, list) {
+		list_del(&temp_data->list);
+		kfree(temp_data);
+	}
+}
+
+static int virtual_sensor_fod_init(void)
+{
+	int i, retval = 0;
+	struct vs_temp_data *ptr;
+	struct fod_algo *fod_algo = NULL;
+
+	fod_algo = kzalloc(sizeof(struct fod_algo), GFP_KERNEL);
+	if (!fod_algo) {
+		pr_err("%s Failed to allocate fod_algo memory\n",
+			__func__);
+		return -ENOMEM;
+	}
+
+	fod_algo->work_delay = TIME_TO_WORK;
+	fod_algo->window_size = NUM_OF_COLLECT;
+	fod_algo->polling_interval = TASK_DURATION;
+
+	fod_algo->wpc_online_status = 0;
+	fod_algo->fod_temp_cnt = 0;
+
+	mutex_init(&fod_algo->fod_lock);
+
+	fod_algo->psy_nb.notifier_call = wpc_online_event;
+	retval = power_supply_reg_notifier(&fod_algo->psy_nb);
+	if (retval < 0) {
+		pr_err("%s register power supply notifier fail\n", __func__);
+		goto err_reg_notify;
+	}
+
+	INIT_LIST_HEAD(&fod_algo->fod_temp.list);
+	fod_algo->cur_list = &fod_algo->fod_temp.list;
+
+	for (i = 1; i < fod_algo->window_size; i++) {
+		ptr = kzalloc(sizeof(struct vs_temp_data), GFP_KERNEL);
+		if (!ptr) {
+			retval = -ENOMEM;
+			goto err_list_add;
+		}
+		list_add_tail(&ptr->list, &fod_algo->fod_temp.list);
+	}
+
+	g_fod = fod_algo;
+	INIT_DELAYED_WORK(&fod_algo->wpc_event_wq, wpc_online_work);
+
+	return retval;
+err_list_add:
+	virtual_sensor_fod_remove();
+err_reg_notify:
+	kfree(fod_algo);
+	fod_algo = NULL;
+	return retval;
+}
+#endif
+
 static int __init virtual_sensor_thermal_init(void)
 {
 	int err = 0;
+#ifdef CONFIG_THERMAL_FOD
+	struct thermal_zone_device *tz;
+	bool wpc_online = false;
+#endif
 
 	err = platform_driver_register(&virtual_sensor_thermal_zone_driver);
 	if (err) {
 		pr_err("%s: Failed to register driver %s\n", __func__,
 		       virtual_sensor_thermal_zone_driver.driver.name);
-		return err;
+		goto error;
 	}
-
+#ifdef CONFIG_THERMAL_FOD
+	tz = thermal_zone_get_zone_by_name(FOD_THERMAL_NAME);
+	if (IS_ERR(tz)) {
+		pr_err("[FOD_INFO]: thermal:%p  is NULL!\n", tz);
+		tz = NULL;
+	} else {
+		err = virtual_sensor_fod_init();
+		if (err)
+			pr_err("%s Failed to allocate vs_temp_data memory\n",
+				__func__);
+		wireless_charger_dev_get_online(get_charger_by_name("wireless_chg"), &wpc_online);
+		if (wpc_online) {
+			g_fod->wpc_online_status = wpc_online;
+			queue_delayed_work(system_freezable_wq, &g_fod->wpc_event_wq, 0);
+		}
+	}
+#endif
+error:
 	return err;
 }
 
 static void __exit virtual_sensor_thermal_exit(void)
 {
 	platform_driver_unregister(&virtual_sensor_thermal_zone_driver);
+
+#ifdef CONFIG_THERMAL_FOD
+	virtual_sensor_fod_remove();
+#endif
 }
 
 late_initcall(virtual_sensor_thermal_init);

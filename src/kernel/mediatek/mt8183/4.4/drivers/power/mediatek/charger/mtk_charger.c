@@ -807,6 +807,14 @@ int charger_enable_vbus_ovp(struct charger_manager *pinfo, bool enable)
 
 bool is_typec_adapter(struct charger_manager *info)
 {
+	bool wpc_online = false;
+
+	wireless_charger_dev_get_online(get_charger_by_name("wireless_chg"),
+		&wpc_online);
+
+	if (wpc_online)
+		return false;
+
 	/* For adapter power detection */
 	if (info->power_detection.en &&
 		(tcpm_inquire_typec_remote_rp_curr(info->tcpc) == 3000 ||
@@ -1697,6 +1705,9 @@ static int charger_routine_thread(void *arg)
 			}
 		} else
 			chr_debug("disable charging\n");
+
+		wireless_charger_dev_do_algorithm(
+			get_charger_by_name("wireless_chg"), info);
 
 		spin_lock_irqsave(&info->slock, flags);
 		wake_unlock(&info->charger_wakelock);
@@ -2994,11 +3005,13 @@ static int mtk_charger_probe(struct platform_device *pdev)
 	info->chg1_data.input_current_limit_by_aicl = -1;
 	info->chg1_data.force_input_current_limit = -1;
 	info->chg1_data.force_charging_current = -1;
+	info->chg1_data.wireless_input_current_limit = -1;
 
 	info->chg2_data.thermal_charging_current_limit = -1;
 	info->chg2_data.thermal_input_current_limit = -1;
 	info->chg2_data.thermal_input_power_limit = -1;
 	info->chg2_data.force_input_current_limit = -1;
+	info->chg2_data.wireless_input_current_limit = -1;
 
 	info->custom_charging_cv = -1;
 	info->custom_plugin_time = 0;

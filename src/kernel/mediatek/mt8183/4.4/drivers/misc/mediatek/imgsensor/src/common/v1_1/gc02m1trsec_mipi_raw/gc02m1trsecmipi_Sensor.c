@@ -599,31 +599,6 @@ kal_uint16 addr_data_pair_init_gc02m1trsec[] = {
 	0x3e, 0x00,
 };
 
-kal_uint16 addr_data_pair_preview_gc02m1trsec[] = {
-	0xfe, 0x00,
-	0x3e, 0x90,
-};
-
-kal_uint16 addr_data_pair_capture_gc02m1trsec[] = {
-	0xfe, 0x00,
-	0x3e, 0x90,
-};
-
-kal_uint16 addr_data_pair_normal_video_gc02m1trsec[] = {
-	0xfe, 0x00,
-	0x3e, 0x90,
-};
-
-kal_uint16 addr_data_pair_hs_video_gc02m1trsec[] = {
-	0xfe, 0x00,
-	0x3e, 0x90,
-};
-
-kal_uint16 addr_data_pair_slim_video_gc02m1trsec[] = {
-	0xfe, 0x00,
-	0x3e, 0x90,
-};
-
 static void sensor_init(void)
 {
 	LOG_INF("E\n");
@@ -637,46 +612,26 @@ static void sensor_init(void)
 static void preview_setting(void)
 {
 	LOG_INF("E\n");
-	gc02m1trsec_table_write_cmos_sensor(
-		addr_data_pair_preview_gc02m1trsec,
-		sizeof(addr_data_pair_preview_gc02m1trsec) /
-		sizeof(kal_uint16));
 }
 
 static void capture_setting(void)
 {
 	LOG_INF("E\n");
-	gc02m1trsec_table_write_cmos_sensor(
-		addr_data_pair_capture_gc02m1trsec,
-		sizeof(addr_data_pair_capture_gc02m1trsec) /
-		sizeof(kal_uint16));
 }
 
 static void normal_video_setting(void)
 {
 	LOG_INF("E\n");
-	gc02m1trsec_table_write_cmos_sensor(
-	    addr_data_pair_normal_video_gc02m1trsec,
-		sizeof(addr_data_pair_normal_video_gc02m1trsec) /
-		sizeof(kal_uint16));
 }
 
 static void hs_video_setting(void)
 {
 	LOG_INF("E\n");
-	gc02m1trsec_table_write_cmos_sensor(
-		addr_data_pair_hs_video_gc02m1trsec,
-		sizeof(addr_data_pair_hs_video_gc02m1trsec) /
-		sizeof(kal_uint16));
 }
 
 static void slim_video_setting(void)
 {
 	LOG_INF("E\n");
-	gc02m1trsec_table_write_cmos_sensor(
-		addr_data_pair_slim_video_gc02m1trsec,
-		sizeof(addr_data_pair_slim_video_gc02m1trsec) /
-		sizeof(kal_uint16));
 }
 
 static kal_uint32 set_test_pattern_mode(kal_bool enable)
@@ -1175,6 +1130,62 @@ static kal_uint32 get_default_framerate_by_scenario(MSDK_SCENARIO_ID_ENUM scenar
 	return ERROR_NONE;
 }
 
+static kal_uint32 get_delay_time(void)
+{
+	kal_uint32 framelength = 0, delayTime = 0;
+	int frmtime_h = 0, frmtime_l = 0;
+
+	write_cmos_sensor(0xfe, 0x00);
+	frmtime_h = read_cmos_sensor(0x41);
+	frmtime_l = read_cmos_sensor(0x42);
+	framelength = ((frmtime_h << 8) | frmtime_l);
+
+	delayTime = 1000000/(imgsensor.pclk/imgsensor.line_length/framelength);
+	LOG_INF("delay time = %d (ms)\n", delayTime/1000);
+
+	return delayTime;
+}
+
+static kal_uint32 streaming_control(kal_bool enable)
+{
+	int streamingReg = 0, retry = 0;
+	kal_uint32 delayTime = 0;
+
+	LOG_INF("streaming_enable(0=Sw Standby,1=streaming): %d\n", enable);
+
+	delayTime = get_delay_time();
+
+	write_cmos_sensor(0xfe, 0x00);
+	if (enable) {
+		while (retry < 6) {
+			LOG_INF("Retry %d time(s)\n", retry);
+			write_cmos_sensor(0x3e, 0x90); /* stream on */
+			usleep_range(delayTime, delayTime);
+			streamingReg = read_cmos_sensor(0x3e);
+			if (streamingReg == 0x90)
+				break;
+
+			retry++;
+		}
+	} else {
+		while (retry < 6) {
+			LOG_INF("Retry %d time(s)\n", retry);
+			write_cmos_sensor(0x3e, 0x00); /* stream off */
+			usleep_range(delayTime, delayTime);
+			streamingReg = read_cmos_sensor(0x3e);
+			if (streamingReg == 0x00)
+				break;
+
+			retry++;
+		}
+	}
+	LOG_INF("Stream On/ Off Reg 0x3E = 0x%X \n", streamingReg);
+
+	usleep_range(10000, 10000);
+
+	return ERROR_NONE;
+}
+
 static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 	UINT8 *feature_para, UINT32 *feature_para_len)
 {
@@ -1315,6 +1326,17 @@ static kal_uint32 feature_control(MSDK_SENSOR_FEATURE_ENUM feature_id,
 			(UINT16)*feature_data, (UINT16)*(feature_data + 1), (UINT16)*(feature_data + 2));
 		ihdr_write_shutter_gain((UINT16)*feature_data, (UINT16)*(feature_data + 1),
 			(UINT16)*(feature_data + 2));
+		break;
+	case SENSOR_FEATURE_SET_STREAMING_SUSPEND:
+		LOG_INF("SENSOR_FEATURE_SET_STREAMING_SUSPEND\n");
+		streaming_control(KAL_FALSE);
+		break;
+	case SENSOR_FEATURE_SET_STREAMING_RESUME:
+		LOG_INF("SENSOR_FEATURE_SET_STREAMING_RESUME, shutter:%llu\n",
+			*feature_data);
+		if (*feature_data != 0)
+			set_shutter(*feature_data);
+		streaming_control(KAL_TRUE);
 		break;
 	default:
 		break;

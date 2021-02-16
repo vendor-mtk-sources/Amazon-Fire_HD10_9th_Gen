@@ -45,6 +45,7 @@
 #include <linux/input.h>
 #include <linux/fb.h>
 #include <linux/notifier.h>
+#include <linux/rtc.h>
 
 #include <mt-plat/charger_type.h>
 #include <mt-plat/charger_class.h>
@@ -56,6 +57,14 @@
 #define DEV_AUTH_RETRY	3
 #define SEND_CMD_RETRY	3
 #define VSWITCH_RETRY	3
+
+enum fod_type {
+	TYPE_UNKNOWN = 0,
+	TYPE_BPP,
+	TYPE_EPP,
+	TYPE_BPP_PLUS,
+	TYPE_MAX
+};
 
 
 static int p9415_enable_charge_flow(struct p9415_dev *chip, bool en);
@@ -656,10 +665,8 @@ static ssize_t p9415_power_switch_store(struct device *dev,
 			p9415_wait_vout(chip, chip->vout_15w - 1000);
 		}
 
-		cm->chr_type = charger;
 		p9415_update_charge_type(chip, charger);
 	} else if (cm->chr_type == WIRELESS_CHARGER_15W) {
-		cm->chr_type = charger;
 		p9415_update_charge_type(chip, charger);
 
 		if (charger == WIRELESS_CHARGER_10W) {
@@ -673,14 +680,12 @@ static ssize_t p9415_power_switch_store(struct device *dev,
 	} else {
 		/* WIRELESS_CHARGER_10W */
 		if (charger == WIRELESS_CHARGER_5W) {
-			cm->chr_type = charger;
 			p9415_update_charge_type(chip, charger);
 			p9415_wait_iout(chip, 1000);
 			p9415_set_vout(chip, 5000);
 		} else {
 			p9415_set_vout(chip, chip->vout_15w);
 			p9415_wait_vout(chip, chip->vout_15w - 1000);
-			cm->chr_type = charger;
 			p9415_update_charge_type(chip, charger);
 		}
 	}
@@ -885,12 +890,38 @@ static ssize_t p9415_fod_regs_show(struct device *dev,
 	ssize_t len = 0;
 	struct i2c_client *client = to_i2c_client(dev);
 	struct p9415_dev *chip = (struct p9415_dev *)i2c_get_clientdata(client);
+	uint16_t idx_coe;
+	struct p9415_fodcoeftype *fod_coe;
 
 	for (reg = REG_FOD_COEF_ADDR; reg <= REG_FOD_DUMP_MAX; reg++) {
 		chip->bus.read(chip, reg, &val);
 		len += scnprintf(buffer+len, PAGE_SIZE-len,
 			"fod reg:0x%02x=0x%02x\n", reg, val);
 	}
+
+	fod_coe = chip->bpp_5w_fod;
+	len += scnprintf(buffer+len, PAGE_SIZE-len, "BPP:\n");
+	for (idx_coe = 0; idx_coe < FOD_COEF_ARRY_LENGTH; idx_coe++)
+		len += scnprintf(buffer+len, PAGE_SIZE-len,
+					"FOD%d:0x%02x%02x\n", idx_coe,
+					fod_coe[idx_coe].offs,
+					fod_coe[idx_coe].gain);
+
+	fod_coe = chip->epp_10w_fod;
+	len += scnprintf(buffer+len, PAGE_SIZE-len, "EPP:\n");
+	for (idx_coe = 0; idx_coe < FOD_COEF_ARRY_LENGTH; idx_coe++)
+		len += scnprintf(buffer+len, PAGE_SIZE-len,
+					"FOD%d:0x%02x%02x\n", idx_coe,
+					fod_coe[idx_coe].offs,
+					fod_coe[idx_coe].gain);
+
+	fod_coe = chip->bpp_plus_15w_fod;
+	len += scnprintf(buffer+len, PAGE_SIZE-len, "BPP+:\n");
+	for (idx_coe = 0; idx_coe < FOD_COEF_ARRY_LENGTH; idx_coe++)
+		len += scnprintf(buffer+len, PAGE_SIZE-len,
+					"FOD%d:0x%02x%02x\n", idx_coe,
+					fod_coe[idx_coe].offs,
+					fod_coe[idx_coe].gain);
 
 	return len;
 }
@@ -903,24 +934,57 @@ static ssize_t p9415_fod_regs_store(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct p9415_dev *chip = (struct p9415_dev *)i2c_get_clientdata(client);
 	int cnt = 0;
-	uint32_t fod[8] = { 0 };
+	uint32_t fod[FOD_COEF_ARRY_LENGTH] = { 0 };
 	int ret = 0;
 	uint16_t idx = 0;
+	enum fod_type type = TYPE_UNKNOWN;
+	struct p9415_fodcoeftype *fod_coe;
 
-	cnt = sscanf(buf, "%x %x %x %x %x %x %x %x",
+	mutex_lock(&chip->sys_lock);
+	cnt = sscanf(buf, "%u %x %x %x %x %x %x",
+			&type,
 			&fod[0], &fod[1], &fod[2], &fod[3],
-			&fod[4], &fod[5], &fod[6], &fod[7]);
-	if (cnt > 8 || !p9415_get_pg_irq_status(chip))
+			&fod[4], &fod[5]);
+	if (cnt > 7) {
+		mutex_unlock(&chip->sys_lock);
 		return -EINVAL;
+	}
+
+	switch (type) {
+	case TYPE_BPP:
+		fod_coe = chip->bpp_5w_fod;
+		break;
+	case TYPE_EPP:
+		fod_coe = chip->epp_10w_fod;
+		break;
+	case TYPE_BPP_PLUS:
+		fod_coe = chip->bpp_plus_15w_fod;
+		break;
+	default:
+		mutex_unlock(&chip->sys_lock);
+		return -EINVAL;
+	}
+
 	mutex_lock(&chip->fod_lock);
-	for (idx = 0; idx < cnt; idx++) {
-		ret = chip->bus.write_buf(chip, REG_FOD_COEF_ADDR + idx*2,
-					(uint8_t *) &fod[idx], 2);
-		if (ret) {
-			mutex_unlock(&chip->fod_lock);
-			return -EINVAL;
+	for (idx = 0; idx < (cnt-1); idx++) {
+
+		fod_coe[idx].gain = fod[idx] & 0xFF;
+		fod_coe[idx].offs = (fod[idx] >> 8) & 0xFF;
+		dev_info(chip->dev, "%s: 0x%x 0x%x 0x%x\n", __func__,
+			fod[idx], fod_coe[idx].offs, fod_coe[idx].gain);
+
+		if (p9415_get_pg_irq_status(chip)) {
+			ret = chip->bus.write_buf(chip,
+						REG_FOD_COEF_ADDR + idx*2,
+						(uint8_t *) &fod[idx], 2);
+			if (ret) {
+				mutex_unlock(&chip->fod_lock);
+				mutex_unlock(&chip->sys_lock);
+				return -EINVAL;
+			}
 		}
 	}
+	mutex_unlock(&chip->sys_lock);
 	mutex_unlock(&chip->fod_lock);
 	return count;
 }
@@ -1291,12 +1355,13 @@ static void p9415_write_fod(struct p9415_dev *chip,
 
 
 	if (chr_type == WIRELESS_CHARGER_15W &&
-			chip->epp_15w_fod_num == FOD_COEF_PARAM_LENGTH)
-		fod_data = (u8 *)(chip->epp_15w_fod);
+			chip->bpp_plus_15w_fod_num == FOD_COEF_PARAM_LENGTH)
+		fod_data = (u8 *)(chip->bpp_plus_15w_fod);
 	else if (chr_type == WIRELESS_CHARGER_10W &&
 			chip->epp_10w_fod_num == FOD_COEF_PARAM_LENGTH)
 		fod_data = (u8 *)(chip->epp_10w_fod);
-	else if (chr_type == WIRELESS_CHARGER_5W
+	else if ((chr_type == WIRELESS_CHARGER_5W ||
+			chr_type == WIRELESS_CHARGER_DEFAULT)
 			&& chip->bpp_5w_fod_num == FOD_COEF_PARAM_LENGTH)
 		fod_data = (u8 *)(chip->bpp_5w_fod);
 
@@ -1327,12 +1392,11 @@ static void p9415_write_fod(struct p9415_dev *chip,
 	if (memcmp(fod_data, fod_read, FOD_COEF_PARAM_LENGTH) == 0)
 		goto out;
 
-	dev_warn(chip->dev, "%s: compare error, chr_type:%d, fod read:%d %d, %d %d, %d %d, %d %d, %d %d, %d %d, %d %d, %d %d",
+	dev_warn(chip->dev, "%s: compare error, chr_type:%d, fod read:%d %d, %d %d, %d %d, %d %d, %d %d, %d %d",
 			__func__, chr_type, fod_read[0], fod_read[1],
 			fod_read[2], fod_read[3], fod_read[4], fod_read[5],
 			fod_read[6], fod_read[7], fod_read[8], fod_read[9],
-			fod_read[10], fod_read[11], fod_read[12], fod_read[13],
-			fod_read[14], fod_read[15]);
+			fod_read[10], fod_read[11]);
 
 out:
 	mutex_unlock(&chip->fod_lock);
@@ -1595,8 +1659,13 @@ irqreturn_t p9415_int_handler(int irq, void *ptr)
 		p9415_report_attach(chip);
 	}
 
-	if (intflag & P9415_INT_ID_AUTH_FAIL)
+	if (intflag & P9415_INT_ID_AUTH_FAIL) {
 		chip->tx_authen_complete = true;
+		if (chip->rx_mode == RX_MODE_BPP &&
+			chip->charger == WIRELESS_CHARGER_DEFAULT &&
+			cancel_delayed_work(&chip->bpp_switch_work))
+			schedule_delayed_work(&chip->bpp_switch_work, 0);
+	}
 
 	if (intflag & P9415_INT_ID_AUTH_SUCCESS &&
 		!chip->tx_id_authen_status) {
@@ -1610,8 +1679,11 @@ irqreturn_t p9415_int_handler(int irq, void *ptr)
 			dev_info(chip->dev, "%s: dev auth fail, retry = %d\n",
 				__func__, chip->dev_auth_retry);
 			p9415_device_auth_req(chip);
-		} else
+		} else {
 			chip->tx_authen_complete = true;
+			if (cancel_delayed_work(&chip->bpp_switch_work))
+				schedule_delayed_work(&chip->bpp_switch_work, 0);
+		}
 	}
 
 	if (intflag & P9415_INT_DEVICE_AUTH_SUCCESS &&
@@ -1634,10 +1706,13 @@ irqreturn_t p9415_int_handler(int irq, void *ptr)
 		chip->send_cmd_retry++;
 		if (chip->send_cmd_retry < SEND_CMD_RETRY)
 			p9415_request_tx_capability(chip);
+		else if (cancel_delayed_work(&chip->bpp_switch_work))
+			schedule_delayed_work(&chip->bpp_switch_work, 0);
 	}
 
 	if (intflag & P9415_INT_VSWITCHSUCCESS) {
 		p9415_write_ovp(chip, OVP_SEL_1_21V);
+		cancel_delayed_work_sync(&chip->bpp_switch_work);
 		cancel_delayed_work_sync(&chip->fast_charging_work);
 		atomic_set(&chip->vswitch_done, 1);
 		schedule_delayed_work(&chip->fast_charging_work, 0);
@@ -1744,16 +1819,14 @@ static int p9415_parse_dt(struct p9415_dev *chip)
 		ret = of_property_read_u8_array(dt, "bpp-5w-fod", fod_data, sizeof(fod_data));
 		if (ret == 0) {
 			memcpy(chip->bpp_5w_fod, fod_data, sizeof(fod_data));
-			dev_info(chip->dev, "%s: 5w fod data:%d %d, %d %d, %d %d, %d %d, %d %d, %d %d, %d %d, %d %d",
+			dev_info(chip->dev, "%s: 5w fod data:%x %x, %x %x, %x %x, %x %x, %x %x, %x %x",
 					__func__,
 					chip->bpp_5w_fod[0].gain, chip->bpp_5w_fod[0].offs,
 					chip->bpp_5w_fod[1].gain, chip->bpp_5w_fod[1].offs,
 					chip->bpp_5w_fod[2].gain, chip->bpp_5w_fod[2].offs,
 					chip->bpp_5w_fod[3].gain, chip->bpp_5w_fod[3].offs,
 					chip->bpp_5w_fod[4].gain, chip->bpp_5w_fod[4].offs,
-					chip->bpp_5w_fod[5].gain, chip->bpp_5w_fod[5].offs,
-					chip->bpp_5w_fod[6].gain, chip->bpp_5w_fod[6].offs,
-					chip->bpp_5w_fod[7].gain, chip->bpp_5w_fod[7].offs);
+					chip->bpp_5w_fod[5].gain, chip->bpp_5w_fod[5].offs);
 		} else
 			dev_err(chip->dev, "%s: Failed to parse bpp-5w-fod.\n",
 				__func__);
@@ -1768,43 +1841,59 @@ static int p9415_parse_dt(struct p9415_dev *chip)
 		ret = of_property_read_u8_array(dt, "epp-10w-fod", fod_data, sizeof(fod_data));
 		if (ret == 0) {
 			memcpy(chip->epp_10w_fod, fod_data, sizeof(fod_data));
-			dev_info(chip->dev, "%s: 10w fod data:%d %d, %d %d, %d %d, %d %d, %d %d, %d %d, %d %d, %d %d",
+			dev_info(chip->dev, "%s: 10w fod data:%x %x, %x %x, %x %x, %x %x, %x %x, %x %x",
 					__func__,
 					chip->epp_10w_fod[0].gain, chip->epp_10w_fod[0].offs,
 					chip->epp_10w_fod[1].gain, chip->epp_10w_fod[1].offs,
 					chip->epp_10w_fod[2].gain, chip->epp_10w_fod[2].offs,
 					chip->epp_10w_fod[3].gain, chip->epp_10w_fod[3].offs,
 					chip->epp_10w_fod[4].gain, chip->epp_10w_fod[4].offs,
-					chip->epp_10w_fod[5].gain, chip->epp_10w_fod[5].offs,
-					chip->epp_10w_fod[6].gain, chip->epp_10w_fod[6].offs,
-					chip->epp_10w_fod[7].gain, chip->epp_10w_fod[7].offs);
+					chip->epp_10w_fod[5].gain, chip->epp_10w_fod[5].offs);
 		} else
 			dev_err(chip->dev, "%s: Failed to parse epp-10w-fod.\n",
 				__func__);
 	}
 
-	chip->epp_15w_fod_num = of_property_count_elems_of_size(dt, "epp-15w-fod", sizeof(u8));
-	if (chip->epp_15w_fod_num != FOD_COEF_PARAM_LENGTH) {
+	chip->bpp_plus_15w_fod_num = of_property_count_elems_of_size(dt,
+		"bpp-plus-15w-fod", sizeof(u8));
+	if (chip->bpp_plus_15w_fod_num != FOD_COEF_PARAM_LENGTH) {
 		dev_err(chip->dev, "%s: Incorrect num of 15w fod data",
 			__func__);
-		chip->epp_15w_fod_num = 0;
+		chip->bpp_plus_15w_fod_num = 0;
 	} else {
-		ret = of_property_read_u8_array(dt, "epp-15w-fod", fod_data, sizeof(fod_data));
+		ret = of_property_read_u8_array(dt, "bpp-plus-15w-fod",
+				fod_data, sizeof(fod_data));
 		if (ret == 0) {
-			memcpy(chip->epp_15w_fod, fod_data, sizeof(fod_data));
-			dev_info(chip->dev, "%s: 15w fod data:%d %d, %d %d, %d %d, %d %d, %d %d, %d %d, %d %d, %d %d",
+			memcpy(chip->bpp_plus_15w_fod, fod_data,
+				sizeof(fod_data));
+			dev_info(chip->dev, "%s: 15w fod data:%x %x, %x %x, %x %x, %x %x, %x %x, %x %x",
 					__func__,
-					chip->epp_15w_fod[0].gain, chip->epp_15w_fod[0].offs,
-					chip->epp_15w_fod[1].gain, chip->epp_15w_fod[1].offs,
-					chip->epp_15w_fod[2].gain, chip->epp_15w_fod[2].offs,
-					chip->epp_15w_fod[3].gain, chip->epp_15w_fod[3].offs,
-					chip->epp_15w_fod[4].gain, chip->epp_15w_fod[4].offs,
-					chip->epp_15w_fod[5].gain, chip->epp_15w_fod[5].offs,
-					chip->epp_15w_fod[6].gain, chip->epp_15w_fod[6].offs,
-					chip->epp_15w_fod[7].gain, chip->epp_15w_fod[7].offs);
+					chip->bpp_plus_15w_fod[0].gain, chip->bpp_plus_15w_fod[0].offs,
+					chip->bpp_plus_15w_fod[1].gain, chip->bpp_plus_15w_fod[1].offs,
+					chip->bpp_plus_15w_fod[2].gain, chip->bpp_plus_15w_fod[2].offs,
+					chip->bpp_plus_15w_fod[3].gain, chip->bpp_plus_15w_fod[3].offs,
+					chip->bpp_plus_15w_fod[4].gain, chip->bpp_plus_15w_fod[4].offs,
+					chip->bpp_plus_15w_fod[5].gain, chip->bpp_plus_15w_fod[5].offs);
 		} else
-			dev_err(chip->dev, "%s: Failed to parse epp-15w-fod.\n",
+			dev_err(chip->dev, "%s: Failed to parse bpp-plus-15w-fod.\n",
 				__func__);
+	}
+
+	ret = of_property_read_s32(dt, "throttle_threshold",
+				&chip->throttle_threshold);
+	if (ret == 0) {
+		dev_info(chip->dev, "%s: BPP+ power throttle threshold %dC\n",
+			__func__, chip->throttle_threshold);
+
+		ret = of_property_read_s32(dt, "throttle_hysteresis_threshold",
+					&chip->throttle_hysteresis_threshold);
+		if (ret)
+			chip->throttle_hysteresis_threshold =
+				chip->throttle_threshold - 3;
+	} else {
+		dev_info(chip->dev, "%s: Not support BPP+ power throttle\n",
+			__func__);
+		chip->throttle_threshold = -1;
 	}
 
 	return 0;
@@ -1823,16 +1912,20 @@ static int p9415_vout_enable(struct charger_device *chg_dev, bool en)
 		return 0;
 	}
 
-	vout = p9415_get_vout_adc(chip);
+	if (p9415_get_pg_irq_status(chip)) {
+		vout = p9415_get_vout_adc(chip);
 
-	if (!chip->vout_en && en) {
-		chip->bus.write(chip, REG_COMMAND, LDOTGL);
-		p9415_attached_vbus(chip);
-	} else if (!en && vout) {
-		chip->bus.write(chip, REG_COMMAND, LDOTGL);
-		p9415_detached_vbus(chip);
-	} else
-		dev_err(chip->dev, "%s: state is not sync", __func__);
+		if (!chip->vout_en && en) {
+			chip->bus.write(chip, REG_COMMAND, LDOTGL);
+			p9415_attached_vbus(chip);
+		} else if (!en && vout) {
+			chip->bus.write(chip, REG_COMMAND, LDOTGL);
+			p9415_detached_vbus(chip);
+		} else
+			dev_err(chip->dev, "%s: state is not sync", __func__);
+	} else {
+		dev_info(chip->dev, "%s: PG isn't ready\n", __func__);
+	}
 
 	return 0;
 }
@@ -1856,6 +1949,34 @@ static int p9415_set_wpc_en(struct charger_device *chg_dev, bool en)
 		usleep_range(10000, 20000);
 		pinctrl_select_state(chip->wpc_pinctrl, chip->wpc_disable);
 	}
+
+	return 0;
+}
+
+static int p9415_set_vout_en(struct charger_device *chg_dev, bool en)
+{
+	struct p9415_dev *chip = dev_get_drvdata(&chg_dev->dev);
+
+	dev_info(chip->dev, "%s: %s\n", __func__, en ? "true" : "false");
+
+	if (!chip->support_sleep_en) {
+		dev_dbg(chip->dev, "%s: Not support sleep pin control.\n",
+				__func__);
+		p9415_vout_enable(chg_dev, en);
+		return 0;
+	}
+
+	if (chip->vout_en == en) {
+		dev_info(chip->dev, "%s: is_enabled status same as %d\n",
+				__func__, en);
+		return 0;
+	}
+	chip->vout_en = en;
+
+	if (en)
+		pinctrl_select_state(chip->wpc_pinctrl, chip->sleep_disable);
+	else
+		pinctrl_select_state(chip->wpc_pinctrl, chip->sleep_enable);
 
 	return 0;
 }
@@ -1898,23 +2019,6 @@ static int p9415_request_io_port(struct p9415_dev *chip)
 		goto PINCTRL_ERR;
 	}
 
-	/* handle VOUT control IHNIBT */
-	chip->vout_en = true;
-	chip->vout_enable = pinctrl_lookup_state(chip->wpc_pinctrl,
-		"vout_enable");
-	if (IS_ERR(chip->vout_enable)) {
-		dev_err(chip->dev, "%s: Cannot find pinctrl vout_enable!\n",
-			__func__);
-		goto PINCTRL_ERR;
-	}
-	chip->vout_disable = pinctrl_lookup_state(chip->wpc_pinctrl,
-		"vout_disable");
-	if (IS_ERR(chip->vout_disable)) {
-		dev_err(chip->dev, "%s: Cannot find pinctrl vout_disable!\n",
-			__func__);
-		goto PINCTRL_ERR;
-	}
-
 	/* handle EPP_DISABLE */
 	chip->epp_en = false;
 	chip->epp_enable = pinctrl_lookup_state(chip->wpc_pinctrl,
@@ -1946,6 +2050,22 @@ static int p9415_request_io_port(struct p9415_dev *chip)
 		dev_err(chip->dev, "%s: Cannot find pinctrl fw_dl_disable!\n",
 			__func__);
 		goto PINCTRL_ERR;
+	}
+
+	/* handle sleep pin */
+	chip->sleep_enable = pinctrl_lookup_state(chip->wpc_pinctrl,
+		"sleep_enable");
+	chip->sleep_disable = pinctrl_lookup_state(chip->wpc_pinctrl,
+		"sleep_disable");
+	if (IS_ERR_OR_NULL(chip->sleep_enable) ||
+			IS_ERR_OR_NULL(chip->sleep_disable)) {
+		chip->support_sleep_en = false;
+		dev_info(chip->dev, "%s: Not support sleep pin control.\n",
+			__func__);
+	} else {
+		chip->support_sleep_en = true;
+		dev_info(chip->dev, "%s: Support sleep pin control.\n",
+			__func__);
 	}
 	return 0;
 
@@ -2053,6 +2173,7 @@ static int p9415_set_wpc_mivr(struct p9415_dev *chip,
 
 	switch (type) {
 	case WIRELESS_CHARGER_5W:
+	case WIRELESS_CHARGER_DEFAULT:
 		p9415_set_charger_mivr(chip, chg1_dev,
 			chip->wpc_mivr[CHARGE_5W_MODE]);
 		break;
@@ -2078,6 +2199,8 @@ static int p9415_update_charge_type(struct p9415_dev *chip,
 	union power_supply_propval propval;
 
 	struct power_supply *chg_psy = power_supply_get_by_name("charger");
+	struct charger_manager *cm =
+		(struct charger_manager *) chip->consumer->cm;
 
 	ret = power_supply_get_property(chg_psy,
 		POWER_SUPPLY_PROP_CHARGER_TYPE, &propval);
@@ -2104,6 +2227,13 @@ static int p9415_update_charge_type(struct p9415_dev *chip,
 			__func__, ret);
 
 	power_supply_changed(chip->wpc_psy);
+
+	if (atomic_read(&chip->online) &&
+		cm->chr_type != CHARGER_UNKNOWN)
+		cm->chr_type = type;
+
+	_wake_up_charger(cm);
+
 	dev_info(chip->dev, "%s: type = %d\n", __func__, type);
 	return ret;
 }
@@ -2156,8 +2286,34 @@ static void p9415_switch_set_state(struct p9415_dev *chip,
 			__func__, set_state);
 }
 
+static void dump_sw_fod_record(struct p9415_dev *chip)
+{
+	if (chip->sw_fod_count > 0) {
+		uint16_t idx, max_count;
+		struct rtc_time tm;
+
+		dev_info(chip->dev, "%s: sw_fod_count:%d\n", __func__,
+			chip->sw_fod_count);
+		max_count = min(chip->sw_fod_count, SW_FOD_RECORD_SIZE);
+		for (idx = 0; idx < max_count; idx++) {
+			rtc_time_to_tm(chip->sw_fod_time_record[idx].tv_sec,
+				&tm);
+			dev_info(chip->dev, "%s: SW FOD record%d: %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n",
+				__func__, idx,
+				tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+				tm.tm_hour, tm.tm_min, tm.tm_sec,
+				chip->sw_fod_time_record[idx].tv_nsec);
+		}
+	}
+}
+
 static void p9415_clean_connection_state(struct p9415_dev *chip)
 {
+	struct charger_manager *cm =
+		(struct charger_manager *) chip->consumer->cm;
+	struct charger_data *pdata;
+
+	cancel_delayed_work_sync(&chip->bpp_switch_work);
 	cancel_delayed_work_sync(&chip->fast_charging_work);
 
 	chip->tx_id_authen_status = false;
@@ -2166,7 +2322,13 @@ static void p9415_clean_connection_state(struct p9415_dev *chip)
 	chip->tx_max_vbridge = 0;
 	chip->tx_max_power = 0;
 	chip->rx_mode = 0;
+	chip->cm_cap_en = false;
 	atomic_set(&chip->vswitch_done, 0);
+
+	pdata = &cm->chg1_data;
+	pdata->wireless_input_current_limit = -1;
+
+	dump_sw_fod_record(chip);
 }
 
 static void p9415_set_cm_cap_enable(struct p9415_dev *chip, bool en)
@@ -2223,10 +2385,14 @@ static int p9415_enable_charge_flow(struct p9415_dev *chip, bool en)
 		dev_info(chip->dev, "%s: id_auth=%d, dev_auth=%d\n",
 			__func__,
 			chip->tx_id_authen_status, chip->tx_dev_authen_status);
-		if (rx_mode == RX_MODE_EPP)
+		if (rx_mode == RX_MODE_EPP) {
 			charger = WIRELESS_CHARGER_10W;
-		else
-			charger = WIRELESS_CHARGER_5W;
+		} else {
+			charger = WIRELESS_CHARGER_DEFAULT;
+
+			schedule_delayed_work(&chip->bpp_switch_work,
+				msecs_to_jiffies(10000));
+		}
 		chip->rx_mode = rx_mode;
 
 		if (charger == WIRELESS_CHARGER_15W)
@@ -2244,12 +2410,46 @@ static int p9415_enable_charge_flow(struct p9415_dev *chip, bool en)
 	return 0;
 }
 
+static int p9415_do_algorithm(struct charger_device *chg_dev, void *data)
+{
+	struct p9415_dev *chip = dev_get_drvdata(&chg_dev->dev);
+	struct charger_manager *info = (struct charger_manager *)data;
+	struct charger_data *pdata;
+	int battery_temperature = info->battery_temperature;
+	bool wpc_online;
+	int throttle_threshold = chip->throttle_threshold;
+	int throttle_hysteresis_threshold = chip->throttle_hysteresis_threshold;
+
+	mutex_lock(&chip->irq_lock);
+	wpc_online = atomic_read(&chip->online);
+	if (!wpc_online)
+		goto out;
+
+	if ((throttle_threshold > 0) &&
+		(chip->charger == WIRELESS_CHARGER_15W)) {
+		pdata = &info->chg1_data;
+		if (battery_temperature >= throttle_threshold) {
+			pdata->wireless_input_current_limit = 1000000;
+		} else if (pdata->wireless_input_current_limit > 0) {
+			if (battery_temperature <= throttle_hysteresis_threshold)
+				pdata->wireless_input_current_limit = -1;
+			else
+				dev_info(chip->dev, "%s: wait battery temperature decreasing\n",
+					__func__);
+		}
+	}
+
+out:
+	mutex_unlock(&chip->irq_lock);
+	return 0;
+}
+
 static struct charger_ops p9415_chg_ops = {
 	.get_temp = p9415_get_temp,
 	.get_wpc_online = p9415_get_online,
-	.do_wpc_algorithm = NULL,	/* TODO: implement it */
+	.do_wpc_algorithm = p9415_do_algorithm,
 	.force_enable_wpc_charge = p9415_force_enable_charge,
-	.set_vout_en = p9415_vout_enable,
+	.set_vout_en = p9415_set_vout_en,
 	.set_wpc_en = p9415_set_wpc_en,
 };
 
@@ -2408,14 +2608,10 @@ static void p9415_do_fast_charging_work(struct work_struct *work)
 {
 	struct p9415_dev *chip = container_of(work, struct p9415_dev,
 						fast_charging_work.work);
-	struct charger_manager *cm =
-		(struct charger_manager *) chip->consumer->cm;
 
 	if (atomic_read(&chip->vswitch_done) == 1) {
-		if (chip->charger != WIRELESS_CHARGER_15W) {
-			cm->chr_type = WIRELESS_CHARGER_15W;
+		if (chip->charger != WIRELESS_CHARGER_15W)
 			p9415_update_charge_type(chip, WIRELESS_CHARGER_15W);
-		}
 	} else {
 		p9415_enable_fc_voltage(chip, chip->vout_15w);
 
@@ -2423,8 +2619,59 @@ static void p9415_do_fast_charging_work(struct work_struct *work)
 			atomic_inc(&chip->vswitch_retry);
 			schedule_delayed_work(&chip->fast_charging_work,
 				msecs_to_jiffies(1000));
+		} else if (cancel_delayed_work(&chip->bpp_switch_work)) {
+			schedule_delayed_work(&chip->bpp_switch_work, 0);
 		}
 	}
+}
+
+static void p9415_bpp_switch_work(struct work_struct *work)
+{
+	struct p9415_dev *chip = container_of(work, struct p9415_dev,
+						bpp_switch_work.work);
+
+	if ((chip->rx_mode == RX_MODE_BPP) &&
+			(chip->charger == WIRELESS_CHARGER_DEFAULT))
+		p9415_update_charge_type(chip, WIRELESS_CHARGER_5W);
+}
+
+static void p9415_simulate_fod(struct p9415_dev *chip)
+{
+	uint16_t idx;
+	uint16_t target_record;
+
+	if (!atomic_read(&chip->online)) {
+		dev_info(chip->dev, "%s: wireless charger is offline\n",
+			__func__);
+		return;
+	}
+
+	mutex_lock(&chip->fod_lock);
+	target_record = chip->sw_fod_count % SW_FOD_RECORD_SIZE;
+	getnstimeofday(&chip->sw_fod_time_record[target_record]);
+	dev_info(chip->dev, "%s: Trigger fake FOD\n", __func__);
+	for (idx = 0; idx < FOD_COEF_PARAM_LENGTH; idx++)
+		p9415_write(chip, REG_FOD_COEF_ADDR + idx, 0);
+	chip->sw_fod_count++;
+	mutex_unlock(&chip->fod_lock);
+}
+
+static int p9415_psy_set_property(struct power_supply *psy,
+	enum power_supply_property psp, const union power_supply_propval *val)
+{
+	struct p9415_dev *chip = power_supply_get_drvdata(psy);
+	int input_current_limit = val->intval;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
+		/*  Only support zero input current limit to send zero FOD. */
+		if (p9415_get_pg_irq_status(chip) && input_current_limit == 0)
+			p9415_simulate_fod(chip);
+		break;
+	default:
+		return -EINVAL;
+	};
+	return 0;
 }
 
 static int p9415_psy_get_property(struct power_supply *psy,
@@ -2432,14 +2679,33 @@ static int p9415_psy_get_property(struct power_supply *psy,
 {
 	struct p9415_dev *chip = power_supply_get_drvdata(psy);
 
+	union power_supply_propval propval;
+	struct power_supply *chg_psy = power_supply_get_by_name("charger");
+	enum charger_type charger;
+	int ret = 0;
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = atomic_read(&chip->online);
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
-		if (chip->charger == WIRELESS_CHARGER_10W)
+		if (chg_psy == NULL) {
+			dev_err(chip->dev, "%s: Not find psy for charger\n",
+						__func__);
+			return -EINVAL;
+		}
+		ret = power_supply_get_property(chg_psy,
+			POWER_SUPPLY_PROP_CHARGER_TYPE, &propval);
+		if (ret < 0) {
+			dev_err(chip->dev, "%s: get psy online failed.\n",
+				__func__);
+			return -EINVAL;
+		}
+
+		charger = propval.intval;
+		if (charger == WIRELESS_CHARGER_10W)
 			val->intval = chip->vout_10w;
-		else if (chip->charger == WIRELESS_CHARGER_15W)
+		else if (charger == WIRELESS_CHARGER_15W)
 			val->intval = chip->vout_15w;
 		else
 			val->intval = 5000;
@@ -2457,7 +2723,19 @@ static int p9415_psy_get_property(struct power_supply *psy,
 	return 0;
 }
 
+int p9415_property_is_writeable(struct power_supply *psy,
+		enum power_supply_property psp)
+{
+	switch (psp) {
+	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
 static enum power_supply_property p9415_psy_properties[] = {
+	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
 	POWER_SUPPLY_PROP_TEMP,
@@ -2559,6 +2837,8 @@ static int p9415_probe(struct i2c_client *client,
 	chip->tx_authen_complete = false;
 	chip->vout_10w = 9000;
 	chip->vout_15w = 10000;
+	chip->vout_en = true;
+	chip->sw_fod_count = 0;
 
 	device_init_wakeup(chip->dev, true);
 	mutex_init(&chip->sys_lock);
@@ -2576,7 +2856,9 @@ static int p9415_probe(struct i2c_client *client,
 	chip->wpc_desc.type = POWER_SUPPLY_TYPE_WIRELESS;
 	chip->wpc_desc.properties = p9415_psy_properties;
 	chip->wpc_desc.num_properties = ARRAY_SIZE(p9415_psy_properties);
+	chip->wpc_desc.set_property = p9415_psy_set_property;
 	chip->wpc_desc.get_property = p9415_psy_get_property;
+	chip->wpc_desc.property_is_writeable = p9415_property_is_writeable,
 	chip->wpc_cfg.drv_data = chip;
 	chip->wpc_psy = power_supply_register(chip->dev, &chip->wpc_desc,
 		&chip->wpc_cfg);
@@ -2623,6 +2905,8 @@ static int p9415_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&chip->wpc_init_work, p9415_determine_init_status);
 	INIT_DELAYED_WORK(&chip->fast_charging_work,
 		p9415_do_fast_charging_work);
+	INIT_DELAYED_WORK(&chip->bpp_switch_work,
+		p9415_bpp_switch_work);
 
 	ret = p9415_register_irq(chip);
 	if (ret < 0) {

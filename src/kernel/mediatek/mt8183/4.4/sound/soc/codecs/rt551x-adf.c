@@ -56,6 +56,12 @@ static int rt551x_set_dsp_mode(struct snd_soc_codec *codec, int DSPMode);
 static struct rt551x_priv *rt551x_pointer;
 static u32 hw_analog_gain = 0xe, hw_digital_gain = 0x892f;
 
+#if defined(CONFIG_AMZN_METRICS_LOG)
+#define RT551X_METRIC_UPLOAD_PERIOD (60 * 60 * 12)
+#define RT551X_METRICS_STR_LEN (128)
+static struct delayed_work rt551x_metrics_upload_work;
+#endif
+
 #define PRIO_TWO_BIGS_TWO_LITTLES_MAX_FREQ 11
 #ifdef CONFIG_MTK_DYNAMIC_BOOST
 extern int set_dynamic_boost(int duration, int prio_mode);
@@ -713,33 +719,6 @@ static const char *rt551x_dsp_binary_name[] = {
 	"SMicBin_rt5518_mode21.dat", "SMicBin_rt5518_mode22.dat", "SMicBin_rt5518_mode23.dat", "SMicBin_rt5518_mode24.dat"
 };
 
-static char *adfStateName[] = {
-	"ADF_STATE_DEF",
-	"ADF_STATE_INIT",
-	"ADF_STATE_IDLE",
-	"ADF_STATE_RUN",
-	"ADF_STATE_LPWR",
-	"ADF_STATE_ERR",
-	"ADF_STATE_MAX"
-};
-
-static adfLogDumpMode_t rt551xLogDumpMode = ADF_LOG_DUMP_RECENT;
-
-static adfFwHdr_secInfo_t *rt551x_get_sec_info(adfFwHdr_t *dspHeader, char *secName)
-{
-	int i = 0;
-	adfFwHdr_secInfo_t *info = NULL;
-
-	if (dspHeader) {
-			info = &(dspHeader->secarray[0]);
-			for (i = 0; i < dspHeader->seccnt; i++, info++) {
-				if (strcmp(info->name, secName) == 0)
-					break;
-			}
-	}
-	return info;
-}
-
 static const SOC_ENUM_SINGLE_DECL(rt551x_dsp_mod_enum, 0, 0,
 	rt551x_dsp_mode);
 
@@ -766,7 +745,7 @@ int rt551x_parse_rtk_header(struct snd_soc_codec *codec, const u8 *buf)
 	u8 *cmp_buf = NULL;
 #endif
 	SMicFWHeader sMicFWHeader;
-	adfDspHeader_t *adfDspHeader = NULL;
+	adfDspPriv_t *adfDspPriv = NULL;
 
 	int i, offset = 0;
 	int ret = 0;
@@ -846,24 +825,24 @@ exit_BinArray:
 	if (sMicFWHeader.BinArray)
 		kfree(sMicFWHeader.BinArray);
 #endif
-	adfDspHeader = adfLoad_getDspHeader(RT551X_CORE_NO);
-	if (adfDspHeader == NULL) {
+	adfDspPriv = adfLoad_getDspPriv(RT551X_CORE_NO);
+	if (adfDspPriv == NULL) {
 		pr_err("invalid dsp core no!\n");
 		return -EINVAL;
 	}
-	mutex_lock(&adfDspHeader->dspHeaderLock);
+	mutex_lock(&adfDspPriv->adfDspLock);
 	/* we will always free the dspHeader as the length may be different for each binary */
-	if (adfDspHeader->dspHeader != NULL)
-		kfree(adfDspHeader->dspHeader);
-	adfDspHeader->dspHeader = kmalloc(ADF_FW_HDRLEN, GFP_KERNEL);
-	if (adfDspHeader->dspHeader == NULL) {
+	if (adfDspPriv->dspHeader != NULL)
+		kfree(adfDspPriv->dspHeader);
+	adfDspPriv->dspHeader = kmalloc(ADF_FW_HDRLEN, GFP_KERNEL);
+	if (adfDspPriv->dspHeader == NULL) {
 		pr_err("Failed to allocate kernel memory for dspHeader\n");
-		mutex_unlock(&adfDspHeader->dspHeaderLock);
+		mutex_unlock(&adfDspPriv->adfDspLock);
 		return -1;
 	}
-	memset(adfDspHeader->dspHeader, 0, ADF_FW_HDRLEN);
-	adfDspHeader->dspHeader->magic = SMICFW_SYNC;
-	mutex_unlock(&adfDspHeader->dspHeaderLock);
+	memset(adfDspPriv->dspHeader, 0, ADF_FW_HDRLEN);
+	adfDspPriv->dspHeader->magic = SMICFW_SYNC;
+	mutex_unlock(&adfDspPriv->adfDspLock);
 	return ret;
 }
 
@@ -1774,21 +1753,21 @@ static void rt551x_do_watchdog_work(struct work_struct *work)
 	int PrevDspMode;
 	int PrevIdleMode;
 	int ret;
-	adfDspHeader_t *adfDspHeader = NULL;
-	adfFwHdr_secInfo_t *logInfo = NULL;
+	adfFwHdr_secInfo_t *logInfo;
+	adfDspPriv_t *adfDspPriv = NULL;;
 
 	mutex_lock(&rt551x->dspcontrol_lock);
 	PrevDspMode = rt551x->dsp_mode;
 	PrevIdleMode = rt551x->dsp_idle;
 	pr_info("%s watchdog DSP Idle Mode Recover [%d] \n", __func__, PrevIdleMode);
 
-	adfDspHeader = adfLoad_getDspHeader(RT551X_CORE_NO);
-	if (adfDspHeader != NULL) {
-		mutex_lock(&adfDspHeader->dspHeaderLock);
-		if (adfDspHeader->dspHeader == NULL)
+	adfDspPriv = adfLoad_getDspPriv(RT551X_CORE_NO);
+	if (adfDspPriv != NULL) {
+		mutex_lock(&adfDspPriv->adfDspLock);
+		if (adfDspPriv->dspHeader == NULL)
 			pr_err("%s invalid dspHeader???\n", __func__);
-		else if (adfDspHeader->dspHeader->magic == ADF_FW_MAGIC) {
-			logInfo = rt551x_get_sec_info(adfDspHeader->dspHeader, "LOG");
+		else if (adfDspPriv->dspHeader->magic == ADF_FW_MAGIC) {
+			logInfo = adfLoad_GetSecInfo(adfDspPriv->dspHeader, "LOG");
 			if (logInfo) {
 				ret = rt551x_spi_burst_read(logInfo->addr, (u8 *)logInfo->data, logInfo->size);
 				if (!ret)
@@ -1796,7 +1775,7 @@ static void rt551x_do_watchdog_work(struct work_struct *work)
 				else
 					adfLog_print(logInfo->data);
 			}
-		} else if (adfDspHeader->dspHeader->magic == SMICFW_SYNC) {
+		} else if (adfDspPriv->dspHeader->magic == SMICFW_SYNC) {
 			ret = rt551x_spi_burst_read(RT551X_DBG_BUF_ADDR, (u8 *)&dbgBufLast, sizeof(DBGBUF_MEM));
 			if (!ret)
 				pr_err("%s dbgBuf spi_burst_read failed! %d\n", __func__, ret);
@@ -1805,7 +1784,7 @@ static void rt551x_do_watchdog_work(struct work_struct *work)
 				rt551x_dbgBuf_print(&dbgBufLast);
 			}
 		}
-		mutex_unlock(&adfDspHeader->dspHeaderLock);
+		mutex_unlock(&adfDspPriv->adfDspLock);
 	}
 
 	rt551x_set_dsp_mode(rt551x->codec, 0);
@@ -2043,26 +2022,14 @@ static ssize_t rt551x_debug_info_show(struct device *dev,
 {
 	int ret, count = 0;
 	DBGBUF_MEM dbgBuf;
-	adfFwHdr_secInfo_t *logInfo;
-	adfDspHeader_t *adfDspHeader = NULL;
+	adfDspPriv_t *adfDspPriv = NULL;
 
-	adfDspHeader = adfLoad_getDspHeader(RT551X_CORE_NO);
-	if (adfDspHeader) {
-		mutex_lock(&adfDspHeader->dspHeaderLock);
-		if (adfDspHeader->dspHeader == NULL)
+	adfDspPriv = adfLoad_getDspPriv(RT551X_CORE_NO);
+	if (adfDspPriv) {
+		mutex_lock(&adfDspPriv->adfDspLock);
+		if (adfDspPriv->dspHeader == NULL)
 			dev_err(dev, "Warning! invalid dspHeader???\n");
-		else if (adfDspHeader->dspHeader->magic == ADF_FW_MAGIC) {
-			logInfo = rt551x_get_sec_info(adfDspHeader->dspHeader, "LOG");
-			if (logInfo) {
-				ret = rt551x_spi_burst_read(logInfo->addr, (u8 *)logInfo->data, logInfo->size);
-				if (!ret)
-					count = snprintf(buf, (ssize_t)PAGE_SIZE, "Warning! Failed to read logData!\n");
-				else {
-					count = adfLog_dump(logInfo->data, buf, PAGE_SIZE, rt551xLogDumpMode);
-					rt551x_spi_burst_write(logInfo->addr, (u8 *)logInfo->data, logInfo->size);
-				}
-			}
-		} else if (adfDspHeader->dspHeader->magic == SMICFW_SYNC) {
+		else if (adfDspPriv->dspHeader->magic == SMICFW_SYNC) {
 			ret = rt551x_spi_burst_read(RT551X_DBG_BUF_ADDR, (u8 *)&dbgBuf, sizeof(DBGBUF_MEM));
 			if (!ret)
 				count = snprintf(buf, (ssize_t)PAGE_SIZE, "Warning! Failed to read DBG_BUF!\n");
@@ -2075,130 +2042,12 @@ static ssize_t rt551x_debug_info_show(struct device *dev,
 				count = rt551x_dbgBuf_dump(&dbgBufLast, buf, count);
 			}
 		}
-		mutex_unlock(&adfDspHeader->dspHeaderLock);
+		mutex_unlock(&adfDspPriv->adfDspLock);
 	}
 	return count;
 }
 
-static ssize_t rt551x_debug_info_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int err;
-	adfFwHdr_secInfo_t *staInfo;
-	adfFwHdr_secInfo_t *cliInfo;
-	adfDspHeader_t *adfDspHeader = NULL;
-
-	adfDspHeader = adfLoad_getDspHeader(RT551X_CORE_NO);
-	if (adfDspHeader) {
-		mutex_lock(&adfDspHeader->dspHeaderLock);
-		if (adfDspHeader->dspHeader == NULL)
-			dev_err(dev, "Warning! invalid dspHeader???\n");
-		else if (adfDspHeader->dspHeader->magic == ADF_FW_MAGIC) {
-			staInfo = rt551x_get_sec_info(adfDspHeader->dspHeader, "STA");
-			cliInfo = rt551x_get_sec_info(adfDspHeader->dspHeader, "CLI");
-
-			/* we have to transfer the sta/cli data and header individually as the lower layer may get the data before it is fully sent */
-			if ((rt551x_spi_burst_read(staInfo->addr, (u8 *)staInfo->data, staInfo->size) == 0) ||
-				(rt551x_spi_burst_read(cliInfo->addr, (u8 *)cliInfo->data, cliInfo->size) == 0)) {
-				dev_err(dev, "%s read staData/cliData failed! count %lx\n", __func__, count);
-				mutex_unlock(&adfDspHeader->dspHeaderLock);
-				return count;
-			}
-			if ((*staInfo->data == ADF_STATE_RUN) || (*staInfo->data == ADF_STATE_LPWR)) {
-				/* SET log dump mode DUMPALL DUMPRECENT */
-				if (strncmp(buf, "DUMPALL", count - 1) == 0)
-					rt551xLogDumpMode = ADF_LOG_DUMP_ALL;
-				else if (strncmp(buf, "DUMPRECENT", count - 1) == 0)
-					rt551xLogDumpMode = ADF_LOG_DUMP_RECENT;
-				else {
-					adfCli_send(cliInfo->data, (char *)buf, count);
-					err = rt551x_spi_burst_write(cliInfo->addr, (u8 *)cliInfo->data, cliInfo->size);
-					if (err)
-						dev_err(dev, "%s write cliData failed! count %lx\n", __func__, count);
-				}
-			} else
-				dev_err(dev, "%s dsp is not in the right state, %d\n", __func__, *staInfo->data);
-		}
-		mutex_unlock(&adfDspHeader->dspHeaderLock);
-	}
-	return count;
-}
-static DEVICE_ATTR(rt551x_debug, 0644, rt551x_debug_info_show, rt551x_debug_info_store);
-
-static ssize_t rt551x_state_info_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	int ret = 0;
-	int count = 0;
-	adfState_t dspState = ADF_STATE_DEF;
-	adfFwHdr_secInfo_t *staInfo = NULL;
-	adfDspHeader_t *adfDspHeader = NULL;
-
-	adfDspHeader = adfLoad_getDspHeader(RT551X_CORE_NO);
-	if (adfDspHeader) {
-		mutex_lock(&adfDspHeader->dspHeaderLock);
-		if (adfDspHeader->dspHeader == NULL)
-			dev_err(dev, "Warning! invalid dspHeader???\n");
-		else if (adfDspHeader->dspHeader->magic == ADF_FW_MAGIC) {
-			staInfo = rt551x_get_sec_info(adfDspHeader->dspHeader, "STA");
-			if (staInfo) {
-				ret  = rt551x_spi_burst_read(staInfo->addr, (u8 *)staInfo->data, staInfo->size);
-				if (ret) {
-					dspState = adfState_get(staInfo->data);
-					if (dspState >= 0 && dspState <
-						(sizeof(adfStateName) / sizeof(adfStateName[0]))) {
-						count = strlen(adfStateName[dspState]);
-						memcpy(buf, adfStateName[dspState], count);
-						memcpy(buf + count, "\n", 1);
-						count += 1;
-					}
-				} else
-					dev_err(dev, "Warning! failed to read state from dsp!\n");
-			}
-		}
-		mutex_unlock(&adfDspHeader->dspHeaderLock);
-	}
-	return count;
-}
-
-static ssize_t rt551x_state_info_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int i = 0;
-	int ret = 0;
-	adfFwHdr_secInfo_t *staInfo = NULL;
-	adfDspHeader_t *adfDspHeader = NULL;
-
-	adfDspHeader = adfLoad_getDspHeader(RT551X_CORE_NO);
-	if (adfDspHeader) {
-		mutex_lock(&adfDspHeader->dspHeaderLock);
-		if (adfDspHeader->dspHeader == NULL)
-			dev_err(dev, "Warning! invalid dspHeader???\n");
-		else if (adfDspHeader->dspHeader->magic == ADF_FW_MAGIC) {
-			staInfo = rt551x_get_sec_info(adfDspHeader->dspHeader, "STA");
-			if (staInfo == NULL) {
-				mutex_unlock(&adfDspHeader->dspHeaderLock);
-				return count;
-			}
-			for (i = 0; i < (sizeof(adfStateName) / sizeof(adfStateName[0])); i++) {
-				if (strncmp(buf, adfStateName[i], count - 1) == 0) {
-					ret = rt551x_spi_burst_read(staInfo->addr, (u8 *)staInfo->data, staInfo->size);
-					if (!ret) {
-						mutex_unlock(&adfDspHeader->dspHeaderLock);
-						return count;
-					}
-					adfState_set(staInfo->data, i);
-					ret = rt551x_spi_burst_write(staInfo->addr, (u8 *)staInfo->data, staInfo->size);
-					if (!ret)
-						dev_err(dev, "Warning! state write to dsp fail!\n");
-				}
-			}
-		}
-		mutex_unlock(&adfDspHeader->dspHeaderLock);
-	}
-	return count;
-}
-static DEVICE_ATTR(rt551x_state, 0644, rt551x_state_info_show, rt551x_state_info_store);
+static DEVICE_ATTR(rt551x_debug, 0444, rt551x_debug_info_show, NULL);
 
 static int rt5518_hw_irq_init(struct rt551x_priv *rt551x)
 {
@@ -2268,6 +2117,82 @@ static void rt5518_gain_init(void)
 	} else
 		pr_info("%s: dsp gain init cannot find matching node, use default setting\n", __func__);
 }
+
+static int adfDbgReadFunc(uintptr_t src, uintptr_t dest, int size)
+{
+	return rt551x_spi_burst_read((unsigned int)src, (u8 *)dest, size);
+}
+
+static int adfDbgWriteFunc(uintptr_t dest, uintptr_t src, int size)
+{
+	return rt551x_spi_burst_write((unsigned int)dest, (u8 *)src, size);
+}
+
+#if defined(CONFIG_AMZN_METRICS_LOG)
+static void *rt551x_dsp_log_fliter(char *logLine)
+{
+	static uint32_t freqIndex;
+	static uint32_t freqTs[3];
+	static bool startRec;
+	uint32_t logLen = 0;
+	char *tsPtr = NULL;
+
+	if (strstr(logLine, "[CTRL_CLI] Dump the power/freq")) {
+		startRec = true;
+		freqIndex = 0;
+		memset(freqTs, 0, sizeof(freqTs));
+	}
+
+	if (strstr(logLine, "[CLI] argc: 2, rc: 0, argv: ctrl power"))
+		startRec = false;
+
+	if (startRec) {
+		if (strstr(logLine, "[CTRL_CLI]") && strstr(logLine, "% ")) {
+			logLen = strlen(logLine);
+			tsPtr = logLine + logLen;
+			while (*tsPtr != ' ' && (uintptr_t)tsPtr > (uintptr_t)logLine)
+				tsPtr--;
+			tsPtr++;
+			if (freqIndex < ARRAY_SIZE(freqTs)) {
+				kstrtou32(tsPtr, 10, &freqTs[freqIndex]);
+				freqIndex++;
+			}
+		}
+	}
+
+	return freqTs;
+}
+
+static void rt551x_do_metrics_upload_work(struct work_struct *work)
+{
+	uint32_t *freqTs = NULL;
+	char metricsLogBuf[RT551X_METRICS_STR_LEN] = {'\0'};
+	char *cliCmds[2] = {"ctrl power ", "ctrl power 1 "};
+	int ret = 0;
+	freqTs = (uint32_t *)adf_debug_query(0, cliCmds, ARRAY_SIZE(cliCmds), rt551x_dsp_log_fliter);
+	if (freqTs) {
+		/*
+		 * upload freq time occupation to metrics (seconds)
+		 * freq_run_ts stand for 20MHZ
+		 * freq_vad_ts stand for 1.25MHZ
+		 * freq table in dsp log as below
+		 * [221228703]<I>[CTRL_CLI] IDX  FREQ(KHz) PERC  INTERVAL(ms)
+		 * [221228703]<I>[CTRL_CLI] =================================
+		 * [221228704]<I>[CTRL_CLI]   0     20000    0%  0
+		 * [221228704]<I>[CTRL_CLI]   1     20000   74%  1385753
+		 * [221228705]<I>[CTRL_CLI]   2      1250   25%  474054
+		 */
+		snprintf(metricsLogBuf, RT551X_METRICS_STR_LEN,
+				"voice_dsp:def:freq_run_ts=%d;CT;1,freq_vad_ts=%d;CT;1:NR",
+				(*freqTs + *(freqTs + 1)) / 1000,
+				*(freqTs + 2) / 1000);
+		ret = log_to_metrics(ANDROID_LOG_INFO, "voice_dsp", metricsLogBuf);
+		if (ret)
+			pr_err("log_to_metrics: fails to upload dsp freq duration %d\n", ret);
+	}
+	schedule_delayed_work(&rt551x_metrics_upload_work, msecs_to_jiffies(RT551X_METRIC_UPLOAD_PERIOD * 1000));
+}
+#endif
 
 static int rt551x_i2c_probe(struct i2c_client *i2c,
 			const struct i2c_device_id *id)
@@ -2372,9 +2297,15 @@ static int rt551x_i2c_probe(struct i2c_client *i2c,
 	ret = device_create_file(&i2c->dev, &dev_attr_rt551x_debug);
 	if (ret < 0)
 		printk("failed to add rt551x_debug sysfs files\n");
-	ret = device_create_file(&i2c->dev, &dev_attr_rt551x_state);
+	/* add adf debug fs files */
+	ret = adf_debug_fs_init(adfDbgReadFunc, adfDbgWriteFunc);
 	if (ret < 0)
-		printk("failed to add rt551x_state sysfs files\n");
+		printk("failed to add adf debugfs files\n");
+#if defined(CONFIG_AMZN_METRICS_LOG)
+	/* init metrics upload work*/
+	INIT_DELAYED_WORK(&rt551x_metrics_upload_work, rt551x_do_metrics_upload_work);
+	schedule_delayed_work(&rt551x_metrics_upload_work, msecs_to_jiffies(RT551X_METRIC_UPLOAD_PERIOD * 1000));
+#endif
 	memset((void *)&dbgBufLast, 0, sizeof(DBGBUF_MEM));
 	return snd_soc_register_codec(&i2c->dev, &soc_codec_dev_rt551x,
 			rt551x_dai, ARRAY_SIZE(rt551x_dai));

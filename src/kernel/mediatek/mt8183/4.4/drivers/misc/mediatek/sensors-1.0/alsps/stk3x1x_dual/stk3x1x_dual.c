@@ -25,6 +25,8 @@
 #include <linux/miscdevice.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
+#include <linux/timekeeping.h>
+#include <linux/time.h>
 #include <linux/input.h>
 #include <linux/workqueue.h>
 #include <linux/kobject.h>
@@ -42,7 +44,7 @@
 #include "alsps.h"
 #include "stk3x1x.h"
 
-#define DRIVER_VERSION			"3.9.2.1 20200521"
+#define DRIVER_VERSION  "3.9.2.1 20200521"
 #define MTK_AUTO_DETECT_ALSPS
 /******************************************************************************
  * configuration
@@ -51,47 +53,52 @@
 /*----------------------------------------------------------------------------*/
 #define stk3x1x_DEV_NAME "stk3x1x"
 /*----------------------------------------------------------------------------*/
-#define APS_TAG			"[ALS/PS] "
-#define APS_FUN(f)		pr_debug(APS_TAG"%s\n", __func__)
-#define APS_ERR(fmt, args...)	pr_err(APS_TAG"%s %d : "fmt, __func__, __LINE__, ##args)
-#define APS_DBG(fmt, args...)	pr_debug(APS_TAG fmt, ##args)
-#define APS_LOG(fmt, args...)	pr_info(APS_TAG fmt, ##args)
+#define APS_TAG                "[ALS/PS] "
+#define APS_FUN(f)             pr_debug(APS_TAG"%s\n", __func__)
+#define APS_ERR(fmt, args...)  pr_err(APS_TAG"%s %d : "fmt, __func__, __LINE__, ##args)
+#define APS_DBG(fmt, args...)  pr_debug(APS_TAG fmt, ##args)
+#define APS_LOG(fmt, args...)  pr_info(APS_TAG fmt, ##args)
 /******************************************************************************
  * extern functions
 *******************************************************************************/
 
-#define STK_IRC_MAX_ALS_CODE		20000
-#define STK_IRC_MIN_ALS_CODE		25
-#define STK_IRC_MIN_IR_CODE		50
-#define STK_IRC_ALS_DENOMI		2
-#define STK_IRC_ALS_NUMERA		5
-#define STK_IRC_ALS_CORREC		748
+#define STK_IRC_MAX_ALS_CODE        20000
+#define STK_IRC_MIN_ALS_CODE        25
+#define STK_IRC_MIN_IR_CODE         50
+#define STK_IRC_ALS_DENOMI          2
+#define STK_IRC_ALS_NUMERA          5
+#define STK_IRC_ALS_CORREC          748
 
-#define STK_IRS_IT_REDUCE		3
-#define STK_ALS_READ_IRS_IT_REDUCE	5
-#define STK_ALS_THRESHOLD		30
+#define STK_IRS_IT_REDUCE           3
+#define STK_ALS_READ_IRS_IT_REDUCE  5
+#define STK_ALS_THRESHOLD           30
 
-#define STK3310SA_PID			0x17
-#define STK3311SA_PID			0x1E
-#define STK3311WV_PID			0x1D
-#define STK3311X_PID			0x12
-#define STK33119_PID			0x11
+#define STK3310SA_PID               0x17
+#define STK3311SA_PID               0x1E
+#define STK3311WV_PID               0x1D
+#define STK3311X_PID                0x12
+#define STK33119_PID                0x11
 
+#define ALS_CALIBRATION_LUX_HIGH    400
+#define ALS_CALIBRATION_LUX_LOW     20
+#define MASTER                      0
+#define SLAVE                       1
+#define STK_IRS                     1
+
+#define IDME_OF_ALSCAL              "/idme/alscal"
+#define IDME_OF_CG_COLOR            "/idme/tp_cg_color"
+#define BLACK                       1
+#define WHITE                       2
+#define ALS_NOT_EXSIT               "als not exsit!\n"
+
+#define IR_INTERVAL_500MS           500000000
 
 static unsigned int  position_1st = 1;
 static unsigned int  position_2nd = 1;
-#define ALS_CALIBRATION_LUX_HIGH 400
-#define ALS_CALIBRATION_LUX_LOW 20
-#define MASTER 0
-#define SLAVE 1
-#define STK_IRS 1
 
-#define IDME_OF_ALSCAL			"/idme/alscal"
-#define IDME_OF_CG_COLOR		"/idme/tp_cg_color"
-#define BLACK 1
-#define WHITE 2
-#define ALS_NOT_EXSIT		"als not exsit!\n"
-
+static struct timespec now;
+static struct timespec last_time;
+static struct timespec stk_diff;
 /*----------------------------------------------------------------------------*/
 static const struct i2c_device_id stk3x1x_i2c_id[] = {
 	{"stk3x1x", 0},
@@ -191,6 +198,10 @@ struct stk3x1x_priv {
 
 	uint32_t als_cal_low;
 	uint32_t als_cal_high;
+	int als_cali_compen_20;
+	int als_cali_compen_400;
+
+	int sensor_num;
 };
 /*----------------------------------------------------------------------------*/
 struct dual_als {
@@ -250,9 +261,8 @@ static struct i2c_driver stk3x1x_i2c_driver = {
 
 
 static int stk3x1x_read_als(struct i2c_client *client, u16 *data);
-static int32_t stk3x1x_get_ir_value(struct stk3x1x_priv *obj,
-		int32_t als_it_reduce);
-
+static int32_t stk3x1x_get_ir_value(struct stk3x1x_priv *obj);
+static int get_cali_compensation(struct device_node *node, char *name);
 static int stk3x1x_init_client(struct i2c_client *client);
 static int als_get_lux(int *value);
 struct wake_lock mps_lock;
@@ -292,42 +302,25 @@ int stk3x1x_get_addr(struct stk3x1x_i2c_addr *addr)
 	return 0;
 }
 /*----------------------------------------------------------------------------*/
-int stk3x1x_hwmsen_read_block(struct i2c_client *client,
+int stk3x1x_i2c_read_block(struct i2c_client *client,
 				u8 addr, u8 *data, u8 len)
 {
 	int err;
-	u8 beg = addr;
-	struct i2c_msg msgs[2] = {
-		{
-			.addr = client->addr,
-			.flags = 0,
-			.len = 1,
-			.buf = &beg
-		},
-		{
-			.addr = client->addr,
-			.flags = I2C_M_RD,
-			.len = len,
-			.buf = data,
-		}
-	};
 
-	mutex_lock(&STK3X1X_i2c_mutex);
 
-	if (!client) {
-		mutex_unlock(&STK3X1X_i2c_mutex);
+	if (!client)
 		return -EINVAL;
-	} else if (len > C_I2C_FIFO_SIZE) {
-		mutex_unlock(&STK3X1X_i2c_mutex);
+	else if (len > C_I2C_FIFO_SIZE) {
 		APS_ERR(" length %d exceeds %d\n", len, C_I2C_FIFO_SIZE);
 		return -EINVAL;
 	}
 
-	err = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	mutex_lock(&STK3X1X_i2c_mutex);
+	err = i2c_smbus_read_i2c_block_data(client, addr, len, data);
 	mutex_unlock(&STK3X1X_i2c_mutex);
 
-	if (err != 2) {
-		APS_ERR("i2c_transfer error: (%d %p %d) %d\n",
+	if (err < 0) {
+		APS_ERR("i2c_smbus_read_i2c_block_data error: (%d %p %d) %d\n",
 			addr, data, len, err);
 		err = -EIO;
 	} else {
@@ -343,19 +336,20 @@ int stk3x1x_get_timing(void)
 }
 
 /*----------------------------------------------------------------------------*/
-int stk3x1x_master_recv(struct i2c_client *client, u16 addr, u8 *buf, int count)
+int stk3x1x_register_read(struct i2c_client *client, u16 addr,
+						u8 *buf, int count)
 {
 	int ret = 0, retry = 0;
 	int trc = atomic_read(&stk3x1x_dual.trace);
 	int max_try = atomic_read(&stk3x1x_dual.i2c_retry);
 
 	while (retry++ < max_try) {
-		ret = stk3x1x_hwmsen_read_block(client, addr, buf, count);
+		ret = stk3x1x_i2c_read_block(client, addr, buf, count);
 
 		if (ret == 0)
 			break;
 
-		udelay(100);
+		usleep_range(100, 110);
 	}
 
 	if (unlikely(trc)) {
@@ -370,19 +364,20 @@ int stk3x1x_master_recv(struct i2c_client *client, u16 addr, u8 *buf, int count)
 	return (ret == 0) ? count : ret;
 }
 /*----------------------------------------------------------------------------*/
-int stk3x1x_master_send(struct i2c_client *client, u16 addr, u8 *buf, int count)
+int stk3x1x_register_write(struct i2c_client *client, u16 addr,
+						u8 *buf, int count)
 {
 	int ret = 0, retry = 0;
 	int trc = atomic_read(&stk3x1x_dual.trace);
 	int max_try = atomic_read(&stk3x1x_dual.i2c_retry);
 
 	while (retry++ < max_try) {
-		ret = hwmsen_write_block(client, addr, buf, count);
+		ret = i2c_smbus_write_i2c_block_data(client, addr, count, buf);
 
 		if (ret == 0)
 			break;
 
-		udelay(100);
+		usleep_range(100, 110);
 	}
 
 	if (unlikely(trc)) {
@@ -402,28 +397,28 @@ static int stk3x1x_otp_read_byte_data(struct i2c_client *client, u8 command)
 	u8 data;
 
 	data = 0x2;
-	ret = stk3x1x_master_send(client, 0x0, &data, 1);
+	ret = stk3x1x_register_write(client, 0x0, &data, 1);
 	if (ret < 0) {
 		APS_ERR("write 0x0 = %d\n", ret);
 		return -EFAULT;
 	}
 
 	data = command;
-	ret = stk3x1x_master_send(client, 0x90, &data, 1);
+	ret = stk3x1x_register_write(client, 0x90, &data, 1);
 	if (ret < 0) {
 		APS_ERR("write 0x90 = %d\n", ret);
 		return -EFAULT;
 	}
 
 	data = 0x82;
-	ret = stk3x1x_master_send(client, 0x92, &data, 1);
+	ret = stk3x1x_register_write(client, 0x92, &data, 1);
 	if (ret < 0) {
 		APS_ERR("write 0x0 = %d\n", ret);
 		return -EFAULT;
 	}
 
 	usleep_range(2000, 4000);
-	ret = stk3x1x_master_recv(client, 0x91, &data, 1);
+	ret = stk3x1x_register_read(client, 0x91, &data, 1);
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
@@ -432,7 +427,7 @@ static int stk3x1x_otp_read_byte_data(struct i2c_client *client, u8 command)
 	value = data;
 	APS_DBG("%s: 0x%x=0x%x\n", __func__, command, value);
 	data = 0x0;
-	ret = stk3x1x_master_send(client, 0x0, &data, 1);
+	ret = stk3x1x_register_write(client, 0x0, &data, 1);
 	if (ret < 0) {
 		APS_ERR("write 0x0 = %d\n", ret);
 		return -EFAULT;
@@ -445,7 +440,9 @@ int stk3x1x_write_led(struct i2c_client *client, u8 data)
 {
 	int ret = 0;
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.ledctrl, &data, 1);
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.ledctrl,
+								&data,
+								1);
 	if (ret < 0) {
 		APS_ERR("write led = %d\n", ret);
 		return -EFAULT;
@@ -455,9 +452,9 @@ int stk3x1x_write_led(struct i2c_client *client, u8 data)
 }
 uint16_t stk_als_ir_formula_black(uint16_t ir_code, u32 als_data)
 {
-	if (ir_code == 0 || (als_data / ir_code) * 100 > 1091)
+	if (ir_code == 0 || (als_data / ir_code) * 100 > 40)
 		return 737;
-	else if ((als_data / ir_code) * 100 > 17)
+	else if ((als_data / ir_code) * 100 > 15)
 		return 726;
 	else
 		return 658;
@@ -465,9 +462,9 @@ uint16_t stk_als_ir_formula_black(uint16_t ir_code, u32 als_data)
 
 uint16_t stk_als_ir_formula_white(uint16_t ir_code, u32 als_data)
 {
-	if (ir_code == 0 || (als_data / ir_code) * 100 > 1091)
+	if (ir_code == 0 || (als_data / ir_code) * 100 > 40)
 		return 2072;
-	else if ((als_data / ir_code) * 100 > 17)
+	else if ((als_data / ir_code) * 100 > 15)
 		return 2116;
 	else
 		return 1943;
@@ -490,8 +487,9 @@ int stk_als_ir_get_formula(struct stk3x1x_priv *obj, u32 als_data)
 					als_data);
 	}
 
-	APS_DBG("%s: bus=%d, als=%d, ir=%d, als_correct_factor=%d",
+	APS_DBG("%s: bus=%d, als_num=%d, als=%d, ir=%d, als_correct_factor=%d",
 				__func__, obj->hw->i2c_num,
+				obj->sensor_num,
 				als_data,
 				obj->ir_code,
 				obj->als_correct_factor);
@@ -500,22 +498,6 @@ int stk_als_ir_get_formula(struct stk3x1x_priv *obj, u32 als_data)
 }
 
 /*----------------------------------------------------------------------------*/
-static int stk_als_get_ir(struct stk3x1x_priv *obj)
-{
-	u32 ir_data;
-
-	ir_data = stk3x1x_get_ir_value(obj, STK_IRS_IT_REDUCE);
-
-	if (ir_data >= 0)
-		obj->ir_code = ir_data;
-		APS_DBG("Index=%d IR=%d\n",
-			obj->als_data_index,
-			obj->ir_code);
-
-
-	return ir_data;
-}
-/*----------------------------------------------------------------------------*/
 int stk3x1x_get_als_adc(struct i2c_client *client)
 {
 	int ret = 0;
@@ -523,7 +505,7 @@ int stk3x1x_get_als_adc(struct i2c_client *client)
 	u32 als_data;
 	struct stk3x1x_priv *obj = i2c_get_clientdata(client);
 
-	ret = stk3x1x_master_recv(client, stk3x1x_dual.addr.data1_als,
+	ret = stk3x1x_register_read(client, stk3x1x_dual.addr.data1_als,
 			buf, 0x02);
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
@@ -564,7 +546,7 @@ int stk3x1x_read_als(struct i2c_client *client, u16 *data)
 
 	als_data = stk3x1x_get_als_adc(client);
 
-	stk_als_get_ir(obj);
+	stk3x1x_get_ir_value(obj);
 
 	stk_als_ir_get_formula(obj, als_data);
 	als_data = ((als_data * obj->als_correct_factor) + 500) / 1000;
@@ -582,7 +564,7 @@ int stk3x1x_write_als(struct i2c_client *client, u8 data)
 {
 	int ret = 0;
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.alsctrl,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.alsctrl,
 			&data, 1);
 	if (ret < 0) {
 		APS_ERR("write als = %d\n", ret);
@@ -600,7 +582,7 @@ int stk3x1x_read_state(struct i2c_client *client, u8 *data)
 	if (!client)
 		return -EINVAL;
 
-	ret = stk3x1x_master_recv(client, STK_STATE_REG, &buf, 0x01);
+	ret = stk3x1x_register_read(client, STK_STATE_REG, &buf, 0x01);
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
@@ -619,7 +601,7 @@ int stk3x1x_read_flag(struct i2c_client *client, u8 *data)
 	if (!client)
 		return -EINVAL;
 
-	ret = stk3x1x_master_recv(client, stk3x1x_dual.addr.flag,
+	ret = stk3x1x_register_read(client, stk3x1x_dual.addr.flag,
 			&buf, 0x01);
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
@@ -647,7 +629,7 @@ int stk3x1x_read_id(struct i2c_client *client)
 	obj->p_wv_r_bd_with_co = 0;
 	obj->p_1x_r_bd_with_co = 0;
 	obj->p_19_r_bc = 0;
-	ret = stk3x1x_master_recv(client, STK_PDT_ID_REG, buf, 0x02);
+	ret = stk3x1x_register_read(client, STK_PDT_ID_REG, buf, 0x02);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
@@ -720,7 +702,7 @@ int stk3x1x_write_ps(struct i2c_client *client, u8 data)
 {
 	int ret = 0;
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.psctrl,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.psctrl,
 			&data, 1);
 	if (ret < 0) {
 		APS_ERR("write ps = %d\n", ret);
@@ -735,7 +717,7 @@ int stk3x1x_write_wait(struct i2c_client *client, u8 data)
 {
 	int ret = 0;
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.wait,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.wait,
 			&data, 1);
 	if (ret < 0) {
 		APS_ERR("write wait = %d\n", ret);
@@ -750,7 +732,7 @@ int stk3x1x_write_int(struct i2c_client *client, u8 data)
 {
 	int ret = 0;
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.intmode,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.intmode,
 			&data, 1);
 	if (ret < 0) {
 		APS_ERR("write intmode = %d\n", ret);
@@ -764,7 +746,7 @@ int stk3x1x_write_state(struct i2c_client *client, u8 data)
 {
 	int ret = 0;
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.state,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.state,
 			&data, 1);
 	if (ret < 0) {
 		APS_ERR("write state = %d\n", ret);
@@ -778,7 +760,7 @@ int stk3x1x_write_flag(struct i2c_client *client, u8 data)
 {
 	int ret = 0;
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.flag,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.flag,
 			&data, 1);
 	if (ret < 0) {
 		APS_ERR("write ps = %d\n", ret);
@@ -795,7 +777,7 @@ int stk3x1x_write_sw_reset(struct i2c_client *client)
 
 	APS_LOG("%s: In\n", __func__);
 	buf = 0x7F;
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.wait,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.wait,
 				(char *)&buf, sizeof(buf));
 
 	if (ret < 0) {
@@ -803,7 +785,7 @@ int stk3x1x_write_sw_reset(struct i2c_client *client)
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_recv(client, stk3x1x_dual.addr.wait,
+	ret = stk3x1x_register_read(client, stk3x1x_dual.addr.wait,
 			&r_buf, 1);
 
 	if (ret < 0) {
@@ -818,7 +800,7 @@ int stk3x1x_write_sw_reset(struct i2c_client *client)
 	}
 
 	buf = 0;
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.soft_reset,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.soft_reset,
 				(char *)&buf, sizeof(buf));
 	if (ret < 0) {
 		APS_ERR("write software reset error = %d\n", ret);
@@ -836,14 +818,14 @@ int stk3x1x_write_als_high_thd(struct i2c_client *client, u16 thd)
 
 	buf[0] = (u8)((0xFF00 & thd) >> 8);
 	buf[1] = (u8)(0x00FF & thd);
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.thdh1_als,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.thdh1_als,
 			&buf[0], 1);
 	if (ret < 0) {
 		APS_ERR("WARNING: %s: %d\n", __func__, ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.thdh2_als,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.thdh2_als,
 			&(buf[1]), 1);
 	if (ret < 0) {
 		APS_ERR("WARNING: %s: %d\n", __func__, ret);
@@ -860,14 +842,14 @@ int stk3x1x_write_als_low_thd(struct i2c_client *client, u16 thd)
 
 	buf[0] = (u8)((0xFF00 & thd) >> 8);
 	buf[1] = (u8)(0x00FF & thd);
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.thdl1_als,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.thdl1_als,
 			&buf[0], 1);
 	if (ret < 0) {
 		APS_ERR("WARNING: %s: %d\n", __func__, ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_send(client, stk3x1x_dual.addr.thdl2_als,
+	ret = stk3x1x_register_write(client, stk3x1x_dual.addr.thdl2_als,
 			&(buf[1]), 1);
 	if (ret < 0) {
 		APS_ERR("WARNING: %s: %d\n", __func__, ret);
@@ -883,13 +865,13 @@ static int stk3x1x_enable_als(struct i2c_client *client, int enable)
 	int err, cur = 0, old = atomic_read(&obj->state_val);
 	int trc = atomic_read(&stk3x1x_dual.trace);
 
-	APS_LOG("%s: i2cbus=%d enable als=%d\n",
-			__func__, obj->hw->i2c_num, enable);
+	APS_LOG("%s: i2cbus=%d als_num=%d, enable als=%d\n",
+			__func__, obj->hw->i2c_num, obj->sensor_num, enable);
 
 	cur = old & (~(STK_STATE_EN_ALS_MASK | STK_STATE_EN_WAIT_MASK));
 
 	if (enable)
-		cur |= STK_STATE_EN_ALS_MASK;
+		cur |= STK_STATE_EN_ALS_MASK | STK_STATE_EN_IRS_MASK;
 	else if (old & STK_STATE_EN_PS_MASK)
 		cur |= STK_STATE_EN_WAIT_MASK;
 
@@ -955,6 +937,9 @@ uint32_t als_calibration(struct stk3x1x_priv *obj, uint32_t alscode)
 	if (alscode == 0)
 		return 0;
 
+	if (alscode > 56000)
+		alscode = 56000;
+
 	alslux = (int)alscode * 10;
 	cal_high = (int)obj->als_cal_high * 10;
 	cal_low = (int)obj->als_cal_low * 10;
@@ -1005,8 +990,10 @@ static int als_cali_set(char *buf)
 	obj = stk3x1x_dual.als[position_1st];
 
 	if (obj) {
-		obj->als_cal_low = dual_cal[0];
-		obj->als_cal_high = dual_cal[1];
+		obj->als_cal_low = ((dual_cal[0] *
+				obj->als_cali_compen_20 + 500) / 1000);
+		obj->als_cal_high = ((dual_cal[1] *
+				obj->als_cali_compen_400 + 500) / 1000);
 
 		APS_LOG("cal values bus=%d 1st=low:%d high:%d\n",
 			stk3x1x_dual.als[position_1st]->hw->i2c_num,
@@ -1017,8 +1004,10 @@ static int als_cali_set(char *buf)
 	obj = stk3x1x_dual.als[position_2nd];
 
 	if (obj) {
-		obj->als_cal_low = dual_cal[2];
-		obj->als_cal_high = dual_cal[3];
+		obj->als_cal_low = ((dual_cal[2] *
+				obj->als_cali_compen_20 + 500) / 1000);
+		obj->als_cal_high = ((dual_cal[3] *
+				obj->als_cali_compen_400 + 500) / 1000);
 
 		APS_LOG("cal values bus=%d 2nd=low:%d high:%d\n",
 			stk3x1x_dual.als[position_2nd]->hw->i2c_num,
@@ -1079,6 +1068,8 @@ static int stk3x1x_init_client(struct i2c_client *client)
 
 	obj->re_enable_als = false;
 	obj->als_code_last = 100;
+
+	get_monotonic_boottime(&last_time);
 
 	return 0;
 }
@@ -1204,16 +1195,12 @@ static ssize_t stk3x1x_store_trace(struct device_driver *ddri,
 /*----------------------------------------------------------------------------*/
 static uint32_t stk3x1x_show_ir(struct stk3x1x_priv *obj)
 {
-	int32_t reading;
-
 	if (!obj) {
 		APS_ERR("stk3x1x_obj is null!!\n");
 		return -1;
 	}
 
-	reading = stk3x1x_get_ir_value(obj, STK_IRS_IT_REDUCE);
-
-	return reading;
+	return obj->ir_code;
 }
 
 static ssize_t show_ir_1st(struct device_driver *ddri, char *buf)
@@ -1227,7 +1214,7 @@ static ssize_t show_ir_1st(struct device_driver *ddri, char *buf)
 	reading = stk3x1x_show_ir(obj);
 
 	if (reading > 0)
-		return scnprintf(buf, PAGE_SIZE, "0x%04X\n", reading);
+		return scnprintf(buf, PAGE_SIZE, "%d\n", reading);
 	else
 		return scnprintf(buf, PAGE_SIZE, "ERROR: %d\n", reading);
 
@@ -1244,7 +1231,7 @@ static ssize_t show_ir_2nd(struct device_driver *ddri, char *buf)
 	reading = stk3x1x_show_ir(obj);
 
 	if (reading > 0)
-		return scnprintf(buf, PAGE_SIZE, "0x%04X\n", obj->ir_code);
+		return scnprintf(buf, PAGE_SIZE, "%d\n", obj->ir_code);
 	else
 		return scnprintf(buf, PAGE_SIZE, "ERROR: %d\n", reading);
 
@@ -1312,42 +1299,42 @@ static ssize_t stk3x1x_show_allreg(struct stk3x1x_priv *stk3x1x_obj, char *buf)
 
 	memset(rbuf, 0, sizeof(rbuf));
 
-	ret = stk3x1x_master_recv(stk3x1x_obj->client, 0, &rbuf[0], 7);
+	ret = stk3x1x_register_read(stk3x1x_obj->client, 0, &rbuf[0], 7);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_recv(stk3x1x_obj->client, 7, &rbuf[7], 7);
+	ret = stk3x1x_register_read(stk3x1x_obj->client, 7, &rbuf[7], 7);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_recv(stk3x1x_obj->client, 14, &rbuf[14], 7);
+	ret = stk3x1x_register_read(stk3x1x_obj->client, 14, &rbuf[14], 7);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_recv(stk3x1x_obj->client, 21, &rbuf[21], 7);
+	ret = stk3x1x_register_read(stk3x1x_obj->client, 21, &rbuf[21], 7);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_recv(stk3x1x_obj->client, 28, &rbuf[28], 4);
+	ret = stk3x1x_register_read(stk3x1x_obj->client, 28, &rbuf[28], 4);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_recv(stk3x1x_obj->client,
+	ret = stk3x1x_register_read(stk3x1x_obj->client,
 					STK_PDT_ID_REG, &rbuf[32], 2);
 
 	if (ret < 0) {
@@ -1431,21 +1418,21 @@ static ssize_t stk3x1x_show_status(struct stk3x1x_priv *stk3x1x_obj, char *buf)
 	len += scnprintf(buf + len, PAGE_SIZE - len, "VER.: %s\n",
 			 DRIVER_VERSION);
 	memset(rbuf, 0, sizeof(rbuf));
-	ret = stk3x1x_master_recv(stk3x1x_obj->client, 0, &rbuf[0], 7);
+	ret = stk3x1x_register_read(stk3x1x_obj->client, 0, &rbuf[0], 7);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_recv(stk3x1x_obj->client, 7, &rbuf[7], 7);
+	ret = stk3x1x_register_read(stk3x1x_obj->client, 7, &rbuf[7], 7);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
 		return -EFAULT;
 	}
 
-	ret = stk3x1x_master_recv(stk3x1x_obj->client, 14, &rbuf[14], 7);
+	ret = stk3x1x_register_read(stk3x1x_obj->client, 14, &rbuf[14], 7);
 
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
@@ -1498,7 +1485,7 @@ static int stk3x1x_show_als_enable(struct stk3x1x_priv *obj, int32_t *enable)
 	u8 r_buf;
 	int ret;
 
-	ret = stk3x1x_master_recv(obj->client,
+	ret = stk3x1x_register_read(obj->client,
 					STK_STATE_REG, &r_buf, 0x01);
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
@@ -1713,12 +1700,14 @@ static DRIVER_ATTR(alscali_1, S_IWUSR | S_IRUGO,
 static DRIVER_ATTR(alscali_2, S_IWUSR | S_IRUGO,
 		stk3x1x_show_als_cali_2nd, NULL);
 /*----------------------------------------------------------------------------*/
-static struct driver_attribute *stk3x1x_attr_list[] = {
+static struct driver_attribute *stk3x1x_attr_list_common[] = {
 
 	&driver_attr_trace,		   /*trace log*/
 	&driver_attr_config,
 	&driver_attr_calival,
+};
 
+static struct driver_attribute *stk3x1x_attr_list_als_1[] = {
 	&driver_attr_als_1,
 	&driver_attr_ir_1,
 	&driver_attr_enable_1,
@@ -1726,7 +1715,9 @@ static struct driver_attribute *stk3x1x_attr_list[] = {
 	&driver_attr_allreg_1,
 	&driver_attr_alstest_1,
 	&driver_attr_alscali_1,
+};
 
+static struct driver_attribute *stk3x1x_attr_list_als_2[] = {
 	&driver_attr_als_2,
 	&driver_attr_ir_2,
 	&driver_attr_enable_2,
@@ -1735,21 +1726,22 @@ static struct driver_attribute *stk3x1x_attr_list[] = {
 	&driver_attr_alstest_2,
 	&driver_attr_alscali_2,
 };
+
 /*----------------------------------------------------------------------------*/
-static int stk3x1x_create_attr(struct device_driver *driver)
+static int stk3x1x_create_attr(struct device_driver *driver,
+				struct driver_attribute **attr_list, int num)
 {
 	int idx, err = 0;
-	int num = (int)(sizeof(stk3x1x_attr_list) /
-			sizeof(stk3x1x_attr_list[0]));
 
 	if (driver == NULL)
 		return -EINVAL;
 
 	for (idx = 0; idx < num; idx++) {
-		err = driver_create_file(driver, stk3x1x_attr_list[idx]);
+		err = driver_create_file(driver, attr_list[idx]);
+
 		if (err) {
 			APS_ERR("driver_create_file (%s) = %d\n",
-					stk3x1x_attr_list[idx]->attr.name, err);
+					attr_list[idx]->attr.name, err);
 			break;
 		}
 	}
@@ -1757,159 +1749,193 @@ static int stk3x1x_create_attr(struct device_driver *driver)
 	return err;
 }
 /*----------------------------------------------------------------------------*/
-static int stk3x1x_delete_attr(struct device_driver *driver)
+static int stk3x1x_delete_attr(struct device_driver *driver,
+				struct driver_attribute **attr_list, int num)
 {
 	int idx, err = 0;
-	int num = (int)(sizeof(stk3x1x_attr_list) /
-			sizeof(stk3x1x_attr_list[0]));
 
 	if (!driver)
 		return -EINVAL;
 
 	for (idx = 0; idx < num; idx++)
-		driver_remove_file(driver, stk3x1x_attr_list[idx]);
+		driver_remove_file(driver, attr_list[idx]);
 
 	return err;
 }
 /*----------------------------------------------------------------------------*/
+static int dualals_create_node(int sensor_num)
+{
+	int err = 0;
+	int num = 0;
+
+	if (sensor_num == 1) {
+		num = (int)(sizeof(stk3x1x_attr_list_als_1) /
+			sizeof(stk3x1x_attr_list_als_1[0]));
+
+		err =
+		stk3x1x_create_attr(
+			&(stk3x1x_init_info.platform_diver_addr->driver),
+			stk3x1x_attr_list_als_1,
+			num);
+	} else {
+		num = (int)(sizeof(stk3x1x_attr_list_als_2) /
+			sizeof(stk3x1x_attr_list_als_2[0]));
+
+		err =
+		stk3x1x_create_attr(
+			&(stk3x1x_init_info.platform_diver_addr->driver),
+			stk3x1x_attr_list_als_2,
+			num);
+	}
+
+	if (err) {
+		APS_ERR("create attribute err = %d\n", err);
+		return -ENAVAIL;
+	}
+
+	return 0;
+}
+/*----------------------------------------------------------------------------*/
+static int dualals_delete_node(void)
+{
+	int err = 0;
+	int num = 0;
+	struct stk3x1x_priv *obj;
+
+	obj = stk3x1x_dual.als[position_1st];
+	if (obj) {
+		num = (int)(sizeof(stk3x1x_attr_list_als_1) /
+			sizeof(stk3x1x_attr_list_als_1[0]));
+
+		err =
+		stk3x1x_delete_attr(
+			&(stk3x1x_init_info.platform_diver_addr->driver),
+			stk3x1x_attr_list_als_1,
+			num);
+
+		if (err)
+			APS_ERR("delete als node 1 attribute err = %d\n", err);
+	}
+
+	obj = stk3x1x_dual.als[position_2nd];
+	if (obj) {
+		num = (int)(sizeof(stk3x1x_attr_list_als_2) /
+			sizeof(stk3x1x_attr_list_als_2[0]));
+
+		err =
+		stk3x1x_delete_attr(
+			&(stk3x1x_init_info.platform_diver_addr->driver),
+			stk3x1x_attr_list_als_2,
+			num);
+
+		if (err) {
+			APS_ERR("delete als node 1 attribute err = %d\n", err);
+			return -EIO;
+		}
+	}
+
+	return 0;
+}
+/*----------------------------------------------------------------------------*/
+static int common_delete_node(void)
+{
+	int num = 0;
+	int err = 0;
+
+	APS_LOG("delete common node\n");
+
+	num = (int)(sizeof(stk3x1x_attr_list_common) /
+			sizeof(stk3x1x_attr_list_common[0]));
+
+	err =
+	stk3x1x_delete_attr(
+		&(stk3x1x_init_info.platform_diver_addr->driver),
+		stk3x1x_attr_list_common,
+		num);
+
+	if (err) {
+		APS_ERR("delete common attribute err = %d\n", err);
+		return -EIO;
+	}
+
+	return 0;
+}
+/*----------------------------------------------------------------------------*/
 static void als_position_init(struct stk3x1x_priv *obj, uint8_t sensors)
 {
-	if (obj->hw->i2c_num == 1)
+	if (obj->sensor_num == 1)
 		position_1st = sensors;
 	else
 		position_2nd = sensors;
 }
 /*----------------------------------------------------------------------------*/
-static int32_t stk3x1x_set_irs_it_slp(struct stk3x1x_priv *obj,
-				uint16_t *slp_time, int32_t ials_it_reduce)
-{
-	uint8_t irs_alsctrl;
-	int32_t ret;
-
-	irs_alsctrl =
-	(atomic_read(&stk3x1x_dual.alsctrl_val) & 0x0F) - ials_it_reduce;
-
-	switch (irs_alsctrl) {
-	case 2:
-		*slp_time = 1;
-		break;
-
-	case 3:
-		*slp_time = 2;
-		break;
-
-	case 4:
-		*slp_time = 3;
-		break;
-
-	case 5:
-		*slp_time = 6;
-		break;
-
-	case 6:
-		*slp_time = 12;
-		break;
-
-	case 7:
-		*slp_time = 24;
-		break;
-
-	case 8:
-		*slp_time = 48;
-		break;
-
-	case 9:
-		*slp_time = 96;
-		break;
-
-	case 10:
-		*slp_time = 192;
-		break;
-
-	default:
-		APS_ERR("%s: unknown ALS IT=0x%x\n", __func__, irs_alsctrl);
-		ret = -EINVAL;
-		return ret;
-	}
-
-	irs_alsctrl |= (atomic_read(&stk3x1x_dual.alsctrl_val) & 0xF0);
-	ret = i2c_smbus_write_byte_data(obj->client,
-					STK_ALSCTRL_REG, irs_alsctrl);
-
-	if (ret < 0) {
-		APS_ERR("%s: write i2c error\n", __func__);
-		return ret;
-	}
-
-	return 0;
-}
-
-static int32_t stk3x1x_get_ir_value(struct stk3x1x_priv *obj,
-		int32_t als_it_reduce)
+static int32_t stk3x1x_get_ir_value(struct stk3x1x_priv *obj)
 {
 	int32_t word_data, ret;
-	uint8_t w_reg, retry = 0;
-	uint16_t irs_slp_time = 100;
+	uint8_t w_reg;
 
 	u8 flag;
 	u8 buf[2];
+	u8 state_buf;
 
-	ret = stk3x1x_set_irs_it_slp(obj, &irs_slp_time, als_it_reduce);
-
-	if (ret < 0)
-		goto irs_err_i2c_rw;
-
-	w_reg = atomic_read(&obj->state_val) | STK_STATE_EN_IRS_MASK;
-	ret = i2c_smbus_write_byte_data(obj->client, STK_STATE_REG, w_reg);
+	ret = stk3x1x_read_flag(obj->client, &flag);
 
 	if (ret < 0) {
-		APS_ERR("%s: write i2c error\n", __func__);
+		APS_ERR("WARNING: read flag reg error: %d\n", ret);
 		goto irs_err_i2c_rw;
 	}
 
-	msleep(irs_slp_time);
-
-	do {
-		msleep(20);
-		ret = stk3x1x_read_flag(obj->client, &flag);
+	if ((flag & STK_FLG_IR_RDY_MASK)) {
+		APS_DBG("IR flag ready!\n");
+		ret = stk3x1x_clear_intr(obj->client, flag,
+							STK_FLG_IR_RDY_MASK);
 
 		if (ret < 0) {
-			APS_ERR("WARNING: read flag reg error: %d\n", ret);
+			APS_ERR("%s: write i2c error\n", __func__);
 			goto irs_err_i2c_rw;
 		}
 
-		retry++;
-	} while (retry < 10 && ((flag & STK_FLG_IR_RDY_MASK) == 0));
+		ret = stk3x1x_register_read(obj->client,
+							STK_DATA1_IR_REG,
+							buf,
+							2);
 
-	if (retry == 10) {
-		APS_ERR("%s: ir data is not ready for a long time\n", __func__);
-		ret = -EINVAL;
-		goto irs_err_i2c_rw;
+		if (ret < 0) {
+			APS_ERR("%s fail, ret=0x%x", __func__, ret);
+			goto irs_err_i2c_rw;
+		}
+
+		word_data = (buf[0] << 8) | buf[1];
+		obj->ir_code = word_data;
+
 	}
 
-	ret = stk3x1x_clear_intr(obj->client, flag, STK_FLG_IR_RDY_MASK);
+	get_monotonic_boottime(&now);
+	stk_diff = timespec_sub(now, last_time);
 
-	if (ret < 0) {
-		APS_ERR("%s: write i2c error\n", __func__);
-		goto irs_err_i2c_rw;
+	APS_DBG("now=%lu, last=%lu, diff = %lu\n",
+			now.tv_nsec, last_time.tv_nsec, stk_diff.tv_nsec);
+
+	if (stk_diff.tv_nsec > IR_INTERVAL_500MS) {
+		stk3x1x_register_read(obj->client,
+						STK_STATE_REG, &state_buf, 1);
+
+		if (!(state_buf & STK_STATE_EN_IRS_MASK)) {
+			w_reg =
+			atomic_read(&obj->state_val) | STK_STATE_EN_IRS_MASK;
+
+			ret = i2c_smbus_write_byte_data(obj->client,
+								STK_STATE_REG,
+								w_reg);
+
+			if (ret < 0) {
+				APS_ERR("%s: write i2c error\n", __func__);
+				goto irs_err_i2c_rw;
+			}
+		}
+		get_monotonic_boottime(&last_time);
 	}
 
-	ret = stk3x1x_master_recv(obj->client, STK_DATA1_IR_REG, buf, 2);
-
-	if (ret < 0) {
-		APS_ERR("%s fail, ret=0x%x", __func__, ret);
-		goto irs_err_i2c_rw;
-	}
-
-	word_data = (buf[0] << 8) | buf[1];
-	ret = i2c_smbus_write_byte_data(obj->client, STK_ALSCTRL_REG,
-				atomic_read(&stk3x1x_dual.alsctrl_val));
-
-	if (ret < 0) {
-		APS_ERR("%s: write i2c error\n", __func__);
-		goto irs_err_i2c_rw;
-	}
-	return word_data;
 irs_err_i2c_rw:
 	return ret;
 }
@@ -2242,8 +2268,9 @@ static int als_get_lux(int *value)
 
 		err = stk3x1x_read_als(obj->client, &obj->als);
 
-		APS_DBG("stk3x1x_read_als bus=%d data = %d ",
+		APS_DBG("stk3x1x_read_als bus=%d als_num=%d data = %d ",
 				obj->hw->i2c_num,
+				obj->sensor_num,
 				obj->als);
 
 		if (err) {
@@ -2287,6 +2314,41 @@ static bool check_is_master(struct device_node *node)
 		return true;
 
 	return false;
+}
+
+static int read_sensor_num(struct device_node *node, int *sensor_num)
+{
+	u32 buf = 0;
+	int ret = 0;
+
+	ret = of_property_read_u32(node, "sensor_num", &buf);
+
+	if (ret)
+		return -ENAVAIL;
+
+	*sensor_num = (int)buf;
+
+	APS_LOG("sensor number is %d\n", *sensor_num);
+
+	return 0;
+}
+
+static int get_cali_compensation(struct device_node *node, char *name)
+{
+	u32 buf = 0;
+	int ret = 0;
+	int cali_compensation = 1000;
+
+	ret = of_property_read_u32(node, name, &buf);
+
+	if (ret) {
+		APS_ERR("read cali compensation from dts failed!!\n");
+		return cali_compensation;
+	}
+
+	cali_compensation = (int)buf;
+
+	return cali_compensation;
 }
 
 static void set_chip_common_setting(void)
@@ -2353,6 +2415,12 @@ static int stk3x1x_i2c_probe(struct i2c_client *client,
 		goto exit_init_failed;
 	}
 
+	err = read_sensor_num(client->dev.of_node, &obj->sensor_num);
+	if (err) {
+		APS_ERR("read sensor number fail! %d\n", err);
+		goto exit_init_failed;
+	}
+
 	if (check_is_master(client->dev.of_node)) {
 		stk3x1x_dual.als[MASTER] = obj;
 		als_position_init(obj, MASTER);
@@ -2361,6 +2429,13 @@ static int stk3x1x_i2c_probe(struct i2c_client *client,
 		stk3x1x_dual.als[SLAVE] = obj;
 		als_position_init(obj, SLAVE);
 	}
+
+	obj->als_cali_compen_20 =
+		get_cali_compensation(client->dev.of_node, "cali_compen_20");
+	APS_LOG("cali_compen_20 = %d\n", obj->als_cali_compen_20);
+	obj->als_cali_compen_400 =
+		get_cali_compensation(client->dev.of_node, "cali_compen_400");
+	APS_LOG("cali_compen_400 = %d\n", obj->als_cali_compen_400);
 
 	obj->als_cal_low = 0;
 	obj->als_cal_high = 0;
@@ -2389,6 +2464,11 @@ static int stk3x1x_i2c_probe(struct i2c_client *client,
 
 	if (stk3x1x_dual.als_count > 1) {
 		stk3x1x_dual.dual_als_enable = 1;
+
+		err = dualals_create_node(obj->sensor_num);
+		if (err)
+			goto exit_2nd_dualals_node_fail;
+
 		return 0;
 	}
 
@@ -2400,11 +2480,19 @@ static int stk3x1x_i2c_probe(struct i2c_client *client,
 
 	err =
 	stk3x1x_create_attr(
-		&(stk3x1x_init_info.platform_diver_addr->driver));
+		&(stk3x1x_init_info.platform_diver_addr->driver),
+		stk3x1x_attr_list_common,
+		3);
 
 	if (err) {
 		APS_ERR("create attribute err = %d\n", err);
 		goto exit_create_attr_failed;
+	}
+
+	err = dualals_create_node(obj->sensor_num);
+	if (err) {
+		APS_ERR("create dualals note fail! err = %d\n", err);
+		goto exit_dualals_node_fail;
 	}
 
 	als_ctl.open_report_data = als_open_report_data;
@@ -2444,7 +2532,11 @@ static int stk3x1x_i2c_probe(struct i2c_client *client,
 
 	return 0;
 
+exit_2nd_dualals_node_fail:
 exit_sensor_obj_attach_fail:
+	dualals_delete_node();
+exit_dualals_node_fail:
+	common_delete_node();
 exit_create_attr_failed:
 	misc_deregister(&stk3x1x_device);
 exit_misc_device_register_failed:
@@ -2464,16 +2556,22 @@ static int stk3x1x_i2c_remove(struct i2c_client *client)
 {
 	int err = 0;
 
-	err =
-	stk3x1x_delete_attr(&(stk3x1x_init_info.platform_diver_addr->driver));
+	if (stk3x1x_dual.als_count == 1) {
+		err = dualals_delete_node();
+		if (err)
+			APS_ERR("dualals_delete_node fail: %d\n", err);
 
-	if (err)
-		APS_ERR("stk3x1x_delete_attr fail: %d\n", err);
+		err = common_delete_node();
+		if (err)
+			APS_ERR("common_delete_node fail: %d\n", err);
 
-	misc_deregister(&stk3x1x_device);
+		misc_deregister(&stk3x1x_device);
+	}
 
 	i2c_unregister_device(client);
 	kfree(i2c_get_clientdata(client));
+
+	stk3x1x_dual.als_count--;
 
 	return 0;
 }

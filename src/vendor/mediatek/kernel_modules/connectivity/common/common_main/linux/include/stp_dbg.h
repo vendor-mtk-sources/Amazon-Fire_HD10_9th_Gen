@@ -378,6 +378,7 @@ VOID stp_dbg_nl_init(VOID);
 VOID stp_dbg_nl_deinit(VOID);
 INT32 stp_dbg_core_dump_deinit_gcoredump(VOID);
 INT32 stp_dbg_core_dump_flush(INT32 rst, MTK_WCN_BOOL coredump_is_timeout);
+VOID notify_fwk_chip_reset(VOID);
 INT32 stp_dbg_core_dump(INT32 dump_sink);
 INT32 stp_dbg_trigger_collect_ftrace(PUINT8 pbuf, INT32 len);
 #if BTIF_RXD_BE_BLOCKED_DETECT

@@ -1428,7 +1428,11 @@ int force_get_tbat(bool update)
 			bat_temperature_val,
 			DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG);
 
+#ifndef CONFIG_SKIP_CHECK_BATON
 		return DEFAULT_BATTERY_TMP_WHEN_DISABLE_NAFG;
+#else
+		return bat_temperature_val;
+#endif
 	}
 
 	gm.ntc_disable_nafg = false;

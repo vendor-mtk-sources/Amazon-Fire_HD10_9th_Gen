@@ -749,9 +749,9 @@ int mtk_cfg80211_scan(struct wiphy *wiphy,
 			COPY_SSID(rScanRequest.rSsid[u4ValidIdx].aucSsid,
 				rScanRequest.rSsid[u4ValidIdx].u4SsidLen,
 				request->ssids[i].ssid, request->ssids[i].ssid_len);
-			DBGLOG(REQ, INFO, "i=%d, u4ValidIdx=%d, aucSsid=%s, u4SsidLen=%d\n",
+			DBGLOG(REQ, INFO, "i=%d, u4ValidIdx=%d, aucSsid=xxxx, u4SsidLen=%d\n",
 				i, u4ValidIdx,
-				rScanRequest.rSsid[u4ValidIdx].aucSsid, rScanRequest.rSsid[u4ValidIdx].u4SsidLen);
+				rScanRequest.rSsid[u4ValidIdx].u4SsidLen);
 
 			u4ValidIdx++;
 			if (u4ValidIdx == SCN_SSID_MAX_NUM) {

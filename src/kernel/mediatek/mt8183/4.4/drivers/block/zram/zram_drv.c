@@ -1159,16 +1159,20 @@ static ssize_t disksize_store(struct device *dev,
 
 	disksize = memparse(buf, NULL);
 	if (!disksize) {
+#ifndef CONFIG_MTK_DISABLE_LMK_PROMOTE_PRIORITY
 #define DEFAULT_MAX_DISKSIZE 0x40000000	/* 1GB */
+#endif
 		/* Give it a default disksize: half totalram_pages */
 		disksize = totalram_pages << (PAGE_SHIFT - 1);
 		/* Promote the default disksize if totalram_pages is smaller */
 		if (totalram_pages < SUPPOSED_TOTALRAM)
 			disksize += (disksize >> 1);
 
+#ifndef CONFIG_MTK_DISABLE_LMK_PROMOTE_PRIORITY
 		if (disksize > DEFAULT_MAX_DISKSIZE)
 			disksize = DEFAULT_MAX_DISKSIZE;
 #undef DEFAULT_MAX_DISKSIZE
+#endif
 	}
 
 	disksize = PAGE_ALIGN(disksize);

@@ -12,3 +12,4 @@ obj-$(CONFIG_INPUT_AMZN_KEYCOMBO)	+= amzn_keycombo.o
 obj-$(CONFIG_AMAZON_INTEGRITY_MODULE)	+= amzn_integrity_module.o
 obj-$(CONFIG_AMAZON_LD)	+= amzn_ld.o
 obj-$(CONFIG_AMZN_RT_TRACE)	+= amzn_rt_trace.o
+obj-$(CONFIG_AMAZON_DSP_FRAMEWORK) += dspframework/

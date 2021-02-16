@@ -408,7 +408,7 @@ static int rt551x_spi_prepare(struct snd_pcm_substream *substream)
 	struct rt551x_dsp *rt551x_dsp =
 			snd_soc_platform_get_drvdata(rtd->platform);
 	unsigned int tmp_wp = 0;
-	adfDspHeader_t *adfDspHeader = NULL;
+	adfDspPriv_t *adfDspPriv = NULL;
 
 	if (rt551x_dsp->buf_base == 0) {
 		mutex_lock(&rt551x_dsp->dma_lock);
@@ -423,32 +423,32 @@ static int rt551x_spi_prepare(struct snd_pcm_substream *substream)
 		}
 		rt551x_dsp->dma_offset = 0;
 
-		adfDspHeader = adfLoad_getDspHeader(RT551X_CORE_NO);
-		if (adfDspHeader == NULL) {
+		adfDspPriv = adfLoad_getDspPriv(RT551X_CORE_NO);
+		if (adfDspPriv == NULL) {
 			dev_err(rt551x_dsp->dev, "invalid dsp core no\n");
 			mutex_unlock(&rt551x_dsp->dma_lock);
 			return -EINVAL;
 		}
-		mutex_lock(&adfDspHeader->dspHeaderLock);
-		if (adfDspHeader->dspHeader == NULL) {
+		mutex_lock(&adfDspPriv->adfDspLock);
+		if (adfDspPriv->dspHeader == NULL) {
 			dev_err(rt551x_dsp->dev, "invalid dspHeader\n");
 			mutex_unlock(&rt551x_dsp->dma_lock);
-			mutex_unlock(&adfDspHeader->dspHeaderLock);
-			return -1;
+			mutex_unlock(&adfDspPriv->adfDspLock);
+			return -EINVAL;
 		}
-		if (adfDspHeader->dspHeader->magic == ADF_FW_MAGIC) {
+		if (adfDspPriv->dspHeader->magic == ADF_FW_MAGIC) {
 			rt551x_spi_read_addr(RT551X_REC_RP, &rt551x_dsp->buf_base);
 			rt551x_spi_read_addr(RT551X_SW_RING_SIZE, &rt551x_dsp->buf_limit);
-		} else if (adfDspHeader->dspHeader->magic == SMICFW_SYNC) {
+		} else if (adfDspPriv->dspHeader->magic == SMICFW_SYNC) {
 			rt551x_spi_read_addr(RT551X_BUFFER_VOICE_BASE, &rt551x_dsp->buf_base);
 			rt551x_spi_read_addr(RT551X_BUFFER_VOICE_LIMIT, &rt551x_dsp->buf_limit);
 		} else {
-			dev_err(rt551x_dsp->dev, "invalid dspHeader->magic, 0x%x\n", adfDspHeader->dspHeader->magic);
+			dev_err(rt551x_dsp->dev, "invalid dspHeader->magic, 0x%x\n", adfDspPriv->dspHeader->magic);
 			mutex_unlock(&rt551x_dsp->dma_lock);
-			mutex_unlock(&adfDspHeader->dspHeaderLock);
-			return -1;
+			mutex_unlock(&adfDspPriv->adfDspLock);
+			return -EINVAL;
 		}
-		mutex_unlock(&adfDspHeader->dspHeaderLock);
+		mutex_unlock(&adfDspPriv->adfDspLock);
 		rt551x_spi_read_addr(RT551X_SW_RING_RP, &rt551x_dsp->buf_rp);
 		rt551x_spi_read_addr(RT551X_SW_RING_WP, &tmp_wp);
 

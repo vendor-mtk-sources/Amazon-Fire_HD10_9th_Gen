@@ -95,7 +95,7 @@ struct ltrx130a_priv {
 #endif
 
 	/*data*/
-	u16 als;
+	u32 als;
 	int als_code;
 	int mix_code;
 	u8 _align;
@@ -113,6 +113,8 @@ struct ltrx130a_priv {
 	uint16_t als_correct_factor;
 	uint32_t als_cal_low;
 	uint32_t als_cal_high;
+
+	int sensor_num;
 };
 
 /*----------------------------------------------------------------------------*/
@@ -184,36 +186,22 @@ static struct i2c_driver ltrx130a_i2c_driver = {
  */
 static int ltrx130a_i2c_read_block(struct i2c_client *client, u8 addr, u8 *data, u8 len)
 {
-	int err;
-	u8 beg = addr;
-	struct i2c_msg msgs[2] = {
-		{
-			.addr = client->addr,
-			.flags = 0,
-			.len = 1,
-			.buf = &beg, },
-		{
-			.addr = client->addr,
-			.flags = I2C_M_RD,
-			.len = len,
-			.buf = data, }
-	};
+	int err = 0;
 
-	mutex_lock(&ltrx130a_i2c_mutex);
 	if (!client) {
-		mutex_unlock(&ltrx130a_i2c_mutex);
 		return -EINVAL;
 	} else if (len > C_I2C_FIFO_SIZE) {
-		mutex_unlock(&ltrx130a_i2c_mutex);
 		APS_LOG(" length %d exceeds %d\n", len, C_I2C_FIFO_SIZE);
 		return -EINVAL;
 	}
 
-	err = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	mutex_lock(&ltrx130a_i2c_mutex);
+	err = i2c_smbus_read_i2c_block_data(client, addr, len, data);
 	mutex_unlock(&ltrx130a_i2c_mutex);
-	if (err != 2) {
-		APS_ERR("i2c_transfer error: (%d %p %d) %d\n",
-				addr, data, len, err);
+
+	if (err < 0) {
+		APS_ERR("i2c_smbus_read_i2c_block_data error: (%d %p %d) %d\n",
+			addr, data, len, err);
 		err = -EIO;
 	} else {
 		err = 0;	/*no error */
@@ -223,37 +211,30 @@ static int ltrx130a_i2c_read_block(struct i2c_client *client, u8 addr, u8 *data,
 
 static int ltrx130a_i2c_write_block(struct i2c_client *client, u8 addr, u8 *data, u8 len)
 {
-	int err, idx, num;
-	char buf[C_I2C_FIFO_SIZE];
+	int err = 0;
 
-	err = 0;
-	mutex_lock(&ltrx130a_i2c_mutex);
 	if (!client) {
-		mutex_unlock(&ltrx130a_i2c_mutex);
 		return -EINVAL;
 	} else if (len >= C_I2C_FIFO_SIZE) {
 		APS_ERR(" length %d exceeds %d\n", len, C_I2C_FIFO_SIZE);
-		mutex_unlock(&ltrx130a_i2c_mutex);
 		return -EINVAL;
 	}
 
-	num = 0;
-	buf[num++] = addr;
-	for (idx = 0; idx < len; idx++)
-		buf[num++] = data[idx];
+	mutex_lock(&ltrx130a_i2c_mutex);
+	err = i2c_smbus_write_i2c_block_data(client, addr, len, data);
+	mutex_unlock(&ltrx130a_i2c_mutex);
 
-	err = i2c_master_send(client, buf, num);
 	if (err < 0) {
 		APS_ERR("send command error!!\n");
-		mutex_unlock(&ltrx130a_i2c_mutex);
 		return -EFAULT;
 	}
-	mutex_unlock(&ltrx130a_i2c_mutex);
+
 	return err;
 }
 
 /*--------------------------------------------------------------------------*/
-static int ltrx130a_master_recv(struct i2c_client *client, u16 addr, u8 *buf, int count)
+static int ltrx130a_register_read(struct i2c_client *client, u16 addr,
+						u8 *buf, int count)
 {
 	int ret = 0, retry = 0;
 	int trc = atomic_read(&ltrx130a_dual.trace);
@@ -277,7 +258,8 @@ static int ltrx130a_master_recv(struct i2c_client *client, u16 addr, u8 *buf, in
 }
 
 /*----------------------------------------------------------------------------*/
-static int ltrx130a_master_send(struct i2c_client *client, u16 addr, u8 *buf, int count)
+static int ltrx130a_register_write(struct i2c_client *client, u16 addr,
+						u8 *buf, int count)
 {
 	int ret = 0, retry = 0;
 	int trc = atomic_read(&ltrx130a_dual.trace);
@@ -311,7 +293,8 @@ static int ltrx130a_als_enable(struct i2c_client *client, int enable)
 	int err = 0;
 	u8 regdata = 0;
 
-	err = ltrx130a_master_recv(client, LTRX130A_MAIN_CTRL, &regdata, 0x01);
+	err = ltrx130a_register_read(client, LTRX130A_MAIN_CTRL,
+							&regdata, 0x01);
 	if (err < 0)
 		APS_ERR("i2c error: %d\n", err);
 
@@ -326,13 +309,15 @@ static int ltrx130a_als_enable(struct i2c_client *client, int enable)
 		regdata &= 0xFD;
 	}
 
-	err = ltrx130a_master_send(client, LTRX130A_MAIN_CTRL, (char *)&regdata, 1);
+	err = ltrx130a_register_write(client, LTRX130A_MAIN_CTRL,
+							(char *)&regdata, 1);
 	if (err < 0) {
 		APS_ERR("ALS: enable als err: %d en: %d\n", err, enable);
 		return err;
 	}
 
-	msleep(WAKEUP_DELAY);
+	if (enable != 0)
+		msleep(WAKEUP_DELAY);
 
 	return 0;
 }
@@ -343,7 +328,7 @@ static int ltrx130a_als_read_alsval(struct i2c_client *client)
 	int alsval = 0;
 	int ret;
 
-	ret = ltrx130a_master_recv(client, LTRX130A_ALS_DATA_0, buf, 0x03);
+	ret = ltrx130a_register_read(client, LTRX130A_ALS_DATA_0, buf, 0x03);
 	if (ret < 0) {
 		APS_ERR("i2c error: %d\n", ret);
 		return 0;
@@ -362,7 +347,7 @@ static int ltrx130a_als_read_clearval(struct i2c_client *client)
 	int clearval = 0;
 	int ret;
 
-	ret = ltrx130a_master_recv(client, LTRX130A_CLEAR_DATA_0, buf, 0x03);
+	ret = ltrx130a_register_read(client, LTRX130A_CLEAR_DATA_0, buf, 0x03);
 	if (ret < 0) {
 		APS_ERR("i2c error: %d\n", ret);
 		return 0;
@@ -570,7 +555,7 @@ static uint32_t als_calibration(struct ltrx130a_priv *obj, uint32_t alscode)
 	return (uint32_t)alslux;
 }
 /*--------------------------------------------------------------------------*/
-static int ltrx130a_als_read(struct ltrx130a_priv *obj, u16 *data)
+static int ltrx130a_als_read(struct ltrx130a_priv *obj, u32 *data)
 {
 	int luxdata_int;
 
@@ -802,7 +787,8 @@ static ssize_t ltrx130a_show_reg(struct ltrx130a_priv *obj, char *buf)
 	u8 buffer;
 
 	for (i = 0; i < 19; i++) {
-		ret = ltrx130a_master_recv(obj->client, reg[i], &buffer, 0x01);
+		ret = ltrx130a_register_read(obj->client, reg[i],
+								&buffer, 0x01);
 		if (ret < 0)
 			APS_ERR("i2c error: %d\n", ret);
 
@@ -847,7 +833,8 @@ static int ltrx130a_dump_reg(struct ltrx130a_priv *obj)
 	u8 buffer;
 
 	for (i = 0; i < 19; i++) {
-		ret = ltrx130a_master_recv(obj->client, reg[i], &buffer, 0x01);
+		ret = ltrx130a_register_read(obj->client, reg[i],
+								&buffer, 0x01);
 		if (ret < 0)
 			APS_ERR("i2c error: %d\n", ret);
 
@@ -868,8 +855,10 @@ static ssize_t ltrx130a_show_status(struct ltrx130a_priv *obj, char *buf)
 	}
 
 	if (obj->hw)
-		len += snprintf(buf+len, PAGE_SIZE-len, "CUST: %d, (%d %d)\n",
-			obj->hw->i2c_num, obj->hw->power_id, obj->hw->power_vol);
+		len += snprintf(buf+len, PAGE_SIZE-len,
+			"CUST: %d, %d, (%d %d)\n",
+			obj->hw->i2c_num, obj->sensor_num,
+			obj->hw->power_id, obj->hw->power_vol);
 	else
 		len += snprintf(buf+len, PAGE_SIZE-len, "CUST: NULL\n");
 
@@ -1152,7 +1141,7 @@ static int ltrx130a_show_als_enable(struct ltrx130a_priv *obj, int32_t *enable)
 	u8 r_buf;
 	int ret;
 
-	ret = ltrx130a_master_recv(obj->client,
+	ret = ltrx130a_register_read(obj->client,
 					LTRX130A_MAIN_CTRL, &r_buf, 0x01);
 	if (ret < 0) {
 		APS_ERR("error: %d\n", ret);
@@ -1296,7 +1285,14 @@ static DRIVER_ATTR(enable_2,  S_IWUSR | S_IRUGO, show_als_enable_2nd,        sto
 static DRIVER_ATTR(alscali_1, S_IWUSR | S_IRUGO, ltrx130a_show_als_cali_1st, NULL);
 static DRIVER_ATTR(alscali_2, S_IWUSR | S_IRUGO, ltrx130a_show_als_cali_2nd, NULL);
 /*--------------------------------------------------------------------------*/
-static struct driver_attribute *ltrx130a_attr_list[] = {
+static struct driver_attribute *ltrx130a_attr_list_common[] = {
+	&driver_attr_trace,        /*trace log*/
+	&driver_attr_config,
+	&driver_attr_calival,
+
+};
+
+static struct driver_attribute *ltrx130a_attr_list_als_1[] = {
 	&driver_attr_als_1,
 	&driver_attr_alstest_1,
 	&driver_attr_alslv_1,
@@ -1305,55 +1301,160 @@ static struct driver_attribute *ltrx130a_attr_list[] = {
 	&driver_attr_status_1,
 	&driver_attr_enable_1,
 	&driver_attr_alscali_1,
-	&driver_attr_alstest_2,
+};
 
+static struct driver_attribute *ltrx130a_attr_list_als_2[] = {
 	&driver_attr_als_2,
+	&driver_attr_alstest_2,
 	&driver_attr_alslv_2,
 	&driver_attr_alsval_2,
 	&driver_attr_status_2,
 	&driver_attr_reg_2,
 	&driver_attr_enable_2,
 	&driver_attr_alscali_2,
-
-	&driver_attr_trace,        /*trace log*/
-	&driver_attr_config,
-	&driver_attr_calival,
-
 };
-
 /*--------------------------------------------------------------------------*/
-static int ltrx130a_create_attr(struct device_driver *driver)
+static int ltrx130a_create_attr(struct device_driver *driver,
+				struct driver_attribute **attr_list, int num)
 {
 	int idx, err = 0;
-	int num = (int)(ARRAY_SIZE(ltrx130a_attr_list));
 
 	if (driver == NULL)
 		return -EINVAL;
 
 	for (idx = 0; idx < num; idx++) {
-		err = driver_create_file(driver, ltrx130a_attr_list[idx]);
+		err = driver_create_file(driver, attr_list[idx]);
 		if (err) {
-			APS_ERR("driver_create_file (%s) = %d\n", ltrx130a_attr_list[idx]->attr.name, err);
+			APS_ERR("driver_create_file (%s) = %d\n",
+					attr_list[idx]->attr.name,
+					err);
 			break;
 		}
 	}
 	return err;
 }
 /*--------------------------------------------------------------------------*/
-static int ltrx130a_delete_attr(struct device_driver *driver)
+static int ltrx130a_delete_attr(struct device_driver *driver,
+				struct driver_attribute **attr_list, int num)
 {
 	int idx, err = 0;
-	int num = (int)(ARRAY_SIZE(ltrx130a_attr_list));
 
 	if (!driver)
 		return -EINVAL;
 
 	for (idx = 0; idx < num; idx++)
-		driver_remove_file(driver, ltrx130a_attr_list[idx]);
+		driver_remove_file(driver, attr_list[idx]);
 
 	return err;
 }
+static int dualals_create_node(int sensor_num)
+{
+	int err = 0;
+	int num = 0;
 
+	if (sensor_num == 1) {
+		num = (int)(sizeof(ltrx130a_attr_list_als_1) /
+			sizeof(ltrx130a_attr_list_als_1[0]));
+
+		err =
+		ltrx130a_create_attr(
+			&(ltrx130a_init_info.platform_diver_addr->driver),
+			ltrx130a_attr_list_als_1,
+			num);
+	} else {
+		num = (int)(sizeof(ltrx130a_attr_list_als_2) /
+			sizeof(ltrx130a_attr_list_als_2[0]));
+
+		err =
+		ltrx130a_create_attr(
+			&(ltrx130a_init_info.platform_diver_addr->driver),
+			ltrx130a_attr_list_als_2,
+			7);
+	}
+
+	if (err) {
+		APS_ERR("create attribute err = %d\n", err);
+		return -ENAVAIL;
+	}
+
+	return 0;
+}
+
+static int dualals_delete_node(void)
+{
+	int err = 0;
+	int num = 0;
+	struct ltrx130a_priv *obj;
+
+	obj = ltrx130a_dual.als[position_1st];
+	if (obj) {
+		num = (int)(sizeof(ltrx130a_attr_list_als_1) /
+			sizeof(ltrx130a_attr_list_als_1[0]));
+
+		err =
+		ltrx130a_delete_attr(
+			&(ltrx130a_init_info.platform_diver_addr->driver),
+			ltrx130a_attr_list_als_1,
+			num);
+	}
+
+	obj = ltrx130a_dual.als[position_2nd];
+	if (obj) {
+		num = (int)(sizeof(ltrx130a_attr_list_als_2) /
+			sizeof(ltrx130a_attr_list_als_2[0]));
+
+		err =
+		ltrx130a_delete_attr(
+			&(ltrx130a_init_info.platform_diver_addr->driver),
+			ltrx130a_attr_list_als_2,
+			num);
+	}
+
+	if (err) {
+		APS_ERR("create attribute err = %d\n", err);
+		return -ENAVAIL;
+	}
+
+	num = (int)(sizeof(ltrx130a_attr_list_common) /
+			sizeof(ltrx130a_attr_list_common[0]));
+
+	err =
+	ltrx130a_delete_attr(
+		&(ltrx130a_init_info.platform_diver_addr->driver),
+		ltrx130a_attr_list_common,
+		num);
+
+	if (err) {
+		APS_ERR("create attribute err = %d\n", err);
+		return -ENAVAIL;
+	}
+
+	return 0;
+}
+/*----------------------------------------------------------------------------*/
+static int common_delete_node(void)
+{
+	int num = 0;
+	int err = 0;
+
+	APS_LOG("delete common node\n");
+
+	num = (int)(sizeof(ltrx130a_attr_list_common) /
+			sizeof(ltrx130a_attr_list_common[0]));
+
+	err =
+	ltrx130a_delete_attr(
+		&(ltrx130a_init_info.platform_diver_addr->driver),
+		ltrx130a_attr_list_common,
+		num);
+
+	if (err) {
+		APS_ERR("delete common attribute err = %d\n", err);
+		return -EIO;
+	}
+
+	return 0;
+}
 /****************************************************************************/
 
 /*--------------------------MISC device related-----------------------------*/
@@ -1484,32 +1585,50 @@ static int ltrx130a_init_client(struct ltrx130a_priv *obj)
 	switch (als_gainrange) {
 	case ALS_RANGE_1:
 		buf = MODE_ALS_Range1;
-		res = ltrx130a_master_send(client, LTRX130A_ALS_GAIN, (char *)&buf, 1);
+		res = ltrx130a_register_write(client,
+							LTRX130A_ALS_GAIN,
+							(char *)&buf,
+							1);
 		break;
 
 	case ALS_RANGE_3:
 		buf = MODE_ALS_Range3;
-		res = ltrx130a_master_send(client, LTRX130A_ALS_GAIN, (char *)&buf, 1);
+		res = ltrx130a_register_write(client,
+							LTRX130A_ALS_GAIN,
+							(char *)&buf,
+							1);
 		break;
 
 	case ALS_RANGE_6:
 		buf = MODE_ALS_Range6;
-		res = ltrx130a_master_send(client, LTRX130A_ALS_GAIN, (char *)&buf, 1);
+		res = ltrx130a_register_write(client,
+							LTRX130A_ALS_GAIN,
+							(char *)&buf,
+							1);
 		break;
 
 	case ALS_RANGE_9:
 		buf = MODE_ALS_Range9;
-		res = ltrx130a_master_send(client, LTRX130A_ALS_GAIN, (char *)&buf, 1);
+		res = ltrx130a_register_write(client,
+							LTRX130A_ALS_GAIN,
+							(char *)&buf,
+							1);
 		break;
 
 	case ALS_RANGE_18:
 		buf = MODE_ALS_Range18;
-		res = ltrx130a_master_send(client, LTRX130A_ALS_GAIN, (char *)&buf, 1);
+		res = ltrx130a_register_write(client,
+							LTRX130A_ALS_GAIN,
+							(char *)&buf,
+							1);
 		break;
 
 	default:
 		buf = MODE_ALS_Range3;
-		res = ltrx130a_master_send(client, LTRX130A_ALS_GAIN, (char *)&buf, 1);
+		res = ltrx130a_register_write(client,
+							LTRX130A_ALS_GAIN,
+							(char *)&buf,
+							1);
 		break;
 	}
 
@@ -1519,7 +1638,10 @@ static int ltrx130a_init_client(struct ltrx130a_priv *obj)
 	}
 
 	buf = ALS_RESO_MEAS;	/* 18 bit & 100ms measurement rate */
-	res = ltrx130a_master_send(client, LTRX130A_ALS_MEAS_RATE, (char *)&buf, 1);
+	res = ltrx130a_register_write(client,
+							LTRX130A_ALS_MEAS_RATE,
+							(char *)&buf,
+							1);
 	APS_ERR("ALS sensor resolution & measurement rate: %d!\n", ALS_RESO_MEAS);
 
 	return 0;
@@ -1712,10 +1834,27 @@ static bool check_is_master(struct device_node *node)
 
 	return false;
 }
+/*--------------------------------------------------------------------------*/
+static int read_sensor_num(struct device_node *node, int *sensor_num)
+{
+	u32 buf = 0;
+	int ret = 0;
+
+	ret = of_property_read_u32(node, "sensor_num", &buf);
+
+	if (ret)
+		return -ENAVAIL;
+
+	*sensor_num = (int)buf;
+
+	APS_LOG("sensor number is %d\n", *sensor_num);
+
+	return 0;
+}
 /*----------------------------------------------------------------------------*/
 static void als_position_init(struct ltrx130a_priv *obj, uint8_t sensors)
 {
-	if (obj->hw->i2c_num == 1)
+	if (obj->sensor_num == 1)
 		position_1st = sensors;
 	else
 		position_2nd = sensors;
@@ -1789,6 +1928,12 @@ static int ltrx130a_i2c_probe(struct i2c_client *client, const struct i2c_device
 
 	APS_LOG("ltrx130a_init_client() OK!\n");
 
+	err = read_sensor_num(client->dev.of_node, &obj->sensor_num);
+	if (err) {
+		APS_ERR("read sensor number fail! %d\n", err);
+		goto exit_init_failed;
+	}
+
 	if (check_is_master(client->dev.of_node)) {
 		ltrx130a_dual.als[MASTER] = obj;
 		als_position_init(obj, MASTER);
@@ -1801,6 +1946,11 @@ static int ltrx130a_i2c_probe(struct i2c_client *client, const struct i2c_device
 	APS_LOG("als_count = %d\n", ltrx130a_dual.als_count);
 
 	if (ltrx130a_dual.als_count > 1) {
+
+		err = dualals_create_node(obj->sensor_num);
+		if (err)
+			goto exit_2nd_dualals_node_fail;
+
 		ltrx130a_dual.dual_als_enable = 1;
 		APS_LOG("dual sensor enable!\n");
 		ltrx130a_init_flag = 0;
@@ -1813,21 +1963,21 @@ static int ltrx130a_i2c_probe(struct i2c_client *client, const struct i2c_device
 		goto exit_misc_device_register_failed;
 	}
 
-	als_ctl.is_use_common_factory = false;
+	err =
+	ltrx130a_create_attr(
+		&(ltrx130a_init_info.platform_diver_addr->driver),
+		ltrx130a_attr_list_common,
+		3);
 
-	/*----------ltrx130a attribute file for debug----------*/
-	err = ltrx130a_create_attr(&(ltrx130a_init_info.platform_diver_addr->driver));
 	if (err) {
-		APS_ERR("create platform attribute err = %d\n", err);
+		APS_ERR("create attribute err = %d\n", err);
 		goto exit_create_attr_failed;
 	}
 
-	err = ltrx130a_create_attr(&(ltrx130a_i2c_driver.driver));
-	if (err) {
-		APS_ERR("create i2c attribute err = %d\n", err);
-		goto exit_create_attr_failed;
-	}
-	/*----------ltrx130a attribute file for debug----------*/
+	err = dualals_create_node(obj->sensor_num);
+
+	if (err)
+		goto exit_dualals_node_fail;
 
 	als_ctl.open_report_data = als_open_report_data;
 	als_ctl.enable_nodata = als_enable_nodata;
@@ -1855,10 +2005,14 @@ static int ltrx130a_i2c_probe(struct i2c_client *client, const struct i2c_device
 	APS_LOG("%s: OK\n", __func__);
 	return 0;
 
-exit_create_attr_failed:
+exit_2nd_dualals_node_fail:
 exit_sensor_obj_attach_fail:
-exit_misc_device_register_failed:
+	dualals_delete_node();
+exit_dualals_node_fail:
+	common_delete_node();
+exit_create_attr_failed:
 	misc_deregister(&ltrx130a_device);
+exit_misc_device_register_failed:
 exit_init_failed:
 	kfree(obj);
 exit:
@@ -1872,18 +2026,19 @@ static int ltrx130a_i2c_remove(struct i2c_client *client)
 {
 	int err;
 
-	err = ltrx130a_delete_attr(&(ltrx130a_init_info.platform_diver_addr->driver));
-	if (err)
-		APS_ERR("ltrx130a_delete_platform_attr fail: %d\n", err);
+	if (ltrx130a_dual.als_count == 1) {
+		err = dualals_delete_node();
 
-	err = ltrx130a_delete_attr(&(ltrx130a_i2c_driver.driver));
-	if (err)
-		APS_ERR("ltrx130a_delete_i2c_attr fail: %d\n", err);
+		if (err)
+			APS_ERR("stk3x1x_delete_attr fail: %d\n", err);
 
-	misc_deregister(&ltrx130a_device);
+		misc_deregister(&ltrx130a_device);
+	}
 
 	i2c_unregister_device(client);
 	kfree(i2c_get_clientdata(client));
+
+	ltrx130a_dual.als_count--;
 
 	return 0;
 }

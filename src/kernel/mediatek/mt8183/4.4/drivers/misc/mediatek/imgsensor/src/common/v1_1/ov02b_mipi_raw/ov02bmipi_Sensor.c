@@ -27,6 +27,8 @@
 #include <linux/fs.h>
 #include <linux/atomic.h>
 #include <linux/types.h>
+#include <linux/of_gpio.h>
+#include <linux/gpio.h>
 
 #include "kd_camera_typedef.h"
 #include "kd_imgsensor.h"
@@ -476,35 +478,54 @@ kal_uint16 addr_data_pair_hs_video_ov02b[] = {
 	0xfe, 0x02,
 };
 
+static kal_uint32 get_delay_time(void)
+{
+	kal_uint32 framelength = 0, delayTime = 0;
+	int frmtime_h = 0, frmtime_l = 0;
+
+	write_cmos_sensor(0xfd, 0x01);
+	frmtime_h = read_cmos_sensor(0x27);
+	frmtime_l = read_cmos_sensor(0x28);
+	framelength = ((frmtime_h << 8) | frmtime_l);
+
+	delayTime = 1000000/(imgsensor.pclk/imgsensor.line_length/framelength);
+	LOG_INF("delay time = %d (ms)\n", delayTime/1000);
+
+	return delayTime;
+}
+
 static kal_uint32 streaming_control(kal_bool enable)
 {
 	int streamingReg = 0, retry = 0;
+	kal_uint32 delayTime = 0;
 
 	LOG_INF("streaming_enable(0=Sw Standby,1=streaming): %d\n", enable);
+
+	delayTime = get_delay_time();
 
 	write_cmos_sensor(0xfd, 0x03);
 	if (enable) {
 		while (retry < 6) {
+			LOG_INF("Retry %d time(s)\n", retry);
 			write_cmos_sensor(0xc2, 0x01); /* stream on */
 			write_cmos_sensor(0xfb, 0x01);
-			usleep_range(33333, 33333);
+			usleep_range(delayTime, delayTime);
 			streamingReg = read_cmos_sensor(0xc2);
 			if (streamingReg == 0x01)
 				break;
 
 			retry++;
-			LOG_INF("Retry %d time(s)\n", retry);
 		}
 	} else {
 		while (retry < 6) {
+			LOG_INF("Retry %d time(s)\n", retry);
 			write_cmos_sensor(0xc2, 0x00); /* stream off */
-			usleep_range(10000, 10000);
+			usleep_range(delayTime, delayTime);
 			streamingReg = read_cmos_sensor(0xc2);
 			if (streamingReg == 0x00)
 				break;
 
 			retry++;
-			LOG_INF("Retry %d time(s)\n", retry);
 		}
 	}
 	LOG_INF("Stream On/ Off Reg 0xC2 = 0x%X \n", streamingReg);
@@ -570,10 +591,30 @@ static kal_uint32 set_test_pattern_mode(kal_bool enable)
 	return ERROR_NONE;
 }
 
+static kal_uint32 get_id_pin(void)
+{
+	struct device_node *node;
+	static int gpionum = -1;
+	int ret;
+
+	if (gpionum == -1) {
+		node = of_find_compatible_node(NULL, NULL, "mediatek,ffc_id_pin");
+		gpionum = of_get_named_gpio(node, "ffc_id_pin", 0);
+	}
+
+	gpio_request(gpionum, "ffc_id_pin");
+	ret = gpio_get_value(gpionum);
+
+	gpio_free(gpionum);
+
+	return ret;
+}
+
 static kal_uint32 get_imgsensor_id(UINT32 *sensor_id)
 {
 	kal_uint8 i = 0;
 	kal_uint8 retry = 2;
+	int ret = 0;
 
 	while (imgsensor_info.i2c_addr_table[i] != 0xff) {
 		spin_lock(&imgsensor_drv_lock);
@@ -583,6 +624,15 @@ static kal_uint32 get_imgsensor_id(UINT32 *sensor_id)
 			*sensor_id = return_sensor_id();
 			if (*sensor_id == imgsensor_info.sensor_id) {
 				LOG_INF("i2c write id: 0x%x, sensor id: 0x%x\n", imgsensor.i2c_write_id, *sensor_id);
+
+				ret = get_id_pin();
+				LOG_INF("ffc_id_pin: %d\n", ret);
+				if (ret == 0) {
+					LOG_INF("FFC_ID_PIN = %d, it is the second source\n", ret);
+					*sensor_id = 0xFFFFFFFF;
+					return ERROR_SENSOR_CONNECT_FAIL;
+				}
+
 				return ERROR_NONE;
 			}
 			LOG_INF("Read sensor id fail, write id: 0x%x, id: 0x%x\n", imgsensor.i2c_write_id, *sensor_id);

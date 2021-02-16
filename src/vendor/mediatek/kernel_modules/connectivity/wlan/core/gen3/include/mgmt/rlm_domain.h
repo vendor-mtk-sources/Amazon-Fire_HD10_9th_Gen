@@ -324,7 +324,10 @@
 #define REGION_CODE_JP (((UINT_16) 'J' << 8) | (UINT_16) 'P')	/* JP                                  */
 #define REGION_CODE_CE (((UINT_16) 'E' << 8) | (UINT_16) 'U')	/* EU                                  */
 #define REGION_CODE_WW (((UINT_16) 'W' << 8) | (UINT_16) 'W')	/* WW                                  */
-
+#if CFG_PWR_LIMIT_COUNTRY
+#define REGION_CODE_AU (((UINT_16) 'A' << 8) | (UINT_16) 'U')	/* AU */
+#define REGION_CODE_CA (((UINT_16) 'C' << 8) | (UINT_16) 'A')	/* CA */
+#endif
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************
@@ -397,7 +400,6 @@ typedef struct _DOMAIN_INFO_ENTRY {
 	 */
 	DOMAIN_SUBBAND_INFO rSubBand[MAX_SUBBAND_NUM];
 } DOMAIN_INFO_ENTRY, *P_DOMAIN_INFO_ENTRY;
-
 
 #if CFG_SUPPORT_PWR_LIMIT_COUNTRY
 

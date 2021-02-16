@@ -247,9 +247,16 @@ extern UINT_8 g_aucNvram[];
 
 #define MAIN_ANT_INDEX 0
 #define SECOND_ANT_INDEX 1
+#define HIGH_ANT_SIGNAL 1
+#define LOW_ANT_SIGNAL 0
 /* ant_placement mapping to orientation 0,1,2,3 */
+/*modify for fos7*/
 #define ant_placement_maverick {MAIN_ANT_INDEX, SECOND_ANT_INDEX, SECOND_ANT_INDEX, MAIN_ANT_INDEX}
 #define ant_placement_trona {MAIN_ANT_INDEX, MAIN_ANT_INDEX, SECOND_ANT_INDEX, SECOND_ANT_INDEX}
+
+/*modify for fos7 record the gpio high or low level of the ant */
+#define ant_signal_maverick {LOW_ANT_SIGNAL, HIGH_ANT_SIGNAL}
+#define ant_signal_trona {HIGH_ANT_SIGNAL, LOW_ANT_SIGNAL}
 
 extern unsigned int g_board_type;
 extern unsigned int idme_get_board_type(void);

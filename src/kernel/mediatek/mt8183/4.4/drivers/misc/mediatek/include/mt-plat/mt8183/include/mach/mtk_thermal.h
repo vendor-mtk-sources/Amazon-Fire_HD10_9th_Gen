@@ -121,9 +121,11 @@ extern void mtkTTimer_cancel_timer(void);
 extern void mtkTTimer_start_timer(void);
 
 extern int mtkts_bts_get_hw_temp(void);
-
+#ifdef CONFIG_THERMAL_FOD
+extern int get_hw_bts_temp_export(int aux_channel, int level);
+#else
 extern int get_hw_bts_temp_export(int aux_channel);
-
+#endif
 extern int get_immediate_ts1_wrap(void);
 
 extern int get_immediate_ts2_wrap(void);

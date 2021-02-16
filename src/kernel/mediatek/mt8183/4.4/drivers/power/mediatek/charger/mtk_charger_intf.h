@@ -326,6 +326,8 @@ struct charger_data {
 	int junction_temp_min;
 	int junction_temp_max;
 	int force_input_current_limit;
+	/* for throttle wireless charging power */
+	int wireless_input_current_limit;
 };
 
 struct power_detection_data {

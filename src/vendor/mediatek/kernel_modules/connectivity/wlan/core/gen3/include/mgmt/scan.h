@@ -454,6 +454,10 @@ typedef struct _SCAN_INFO_T {
 
 	TIMER_T rScanDoneTimer;
 	UINT_8 ucScanDoneTimeoutCnt;
+	/*record time when begin scan*/
+	OS_SYSTIME u4ScanStartTime;
+	/*record total scan time duration */
+	OS_SYSTIME u4TotalScanTime;
 } SCAN_INFO_T, *P_SCAN_INFO_T;
 
 /* Incoming Mailbox Messages */

@@ -24,6 +24,12 @@
 #include <linux/kobject.h>
 #include <linux/slab.h>
 #include <linux/thermal_framework.h>
+#ifdef CONFIG_THERMAL_FOD
+#include "mt-plat/charger_type.h"
+#define POLICY_BPP_IDX 1
+#define POLICY_EPP_IDX 2
+#define POLICY_MFA_IDX 3
+#endif
 
 #define DRIVER_NAME "virtual_sensor_cooler"
 
@@ -63,6 +69,12 @@ static int virtual_sensor_set_cur_state(struct thermal_cooling_device *cdev,
 	int level;
 	struct vs_cooler_platform_data *pdata;
 	struct cooler_sort_list *cooler_list = NULL;
+#ifdef CONFIG_THERMAL_FOD
+	int ret = 0;
+	union power_supply_propval propval;
+	struct power_supply *chg_psy;
+	int dock_type;
+#endif
 
 	if (!cdev || !(cdev->devdata)) {
 		pr_err("%s cdev: %p or cdev->devdata is NULL!\n", __func__, cdev);
@@ -72,6 +84,57 @@ static int virtual_sensor_set_cur_state(struct thermal_cooling_device *cdev,
 	if (pdata->state == state)
 		return 0;
 
+#ifdef CONFIG_THERMAL_FOD
+	if (!strcmp(cdev->type, "wpc_bcct1")) {
+		chg_psy = power_supply_get_by_name("charger");
+		if (!chg_psy) {
+			pr_err("Cannot find power supply \"charger\"\n");
+			return -ENODEV;
+		}
+
+		ret = power_supply_get_property(chg_psy, POWER_SUPPLY_PROP_CHARGER_TYPE, &propval);
+		if (ret < 0) {
+			pr_err("[FOD_INFO] : get psy type failed, ret = %d\n",
+				__func__, ret);
+			return ret;
+		}
+
+		/* -------------------------------------------------------------
+		 * Type    | enum charger_type            | Idx of policy      |
+		 * -------------------------------------------------------------
+		 * BPP     | WIRELESS_CHARGER_5W (8)      | POLICY_BPP_IDX (1) |
+		 * -------------------------------------------------------------
+		 * EPP     | WIRELESS_CHARGER_10W(9)      | POLICY_EPP_IDX (2) |
+		 * -------------------------------------------------------------
+		 * MFA     | WIRELESS_CHARGER_15W(10)     | POLICY_MFA_IDX (3) |
+		 * -------------------------------------------------------------
+		 * Default | WIRELESS_CHARGER_DEFAULT(11) | POLICY_BPP_IDX (1) |
+		 * -------------------------------------------------------------
+		 *  Set up charger type as trip point into policy.
+		 *  The action of each trip point corresponds to the specified charger type.
+		 */
+		switch (propval.intval) {
+		case WIRELESS_CHARGER_5W:
+		case WIRELESS_CHARGER_DEFAULT:
+			dock_type = POLICY_BPP_IDX;
+			break;
+		case WIRELESS_CHARGER_10W:
+			dock_type = POLICY_EPP_IDX;
+			break;
+		case WIRELESS_CHARGER_15W:
+			dock_type = POLICY_MFA_IDX;
+			break;
+		default:
+			dock_type = POLICY_BPP_IDX;
+			pr_err("[FOD_INFO] : charger_type[%d] is not supported\n", propval.intval);
+			break;
+		}
+
+		if (state < dock_type)
+			return 0;
+		pr_info("[FOD_INFO]:%s state = %d, dock_type = %d\n", __func__, state, dock_type);
+	}
+#endif
 	pdata->state = (state > pdata->max_state) ? pdata->max_state : state;
 	if (!pdata->state)
 		level = pdata->max_level;

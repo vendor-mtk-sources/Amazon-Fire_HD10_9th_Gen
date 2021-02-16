@@ -84,6 +84,7 @@ static const char * const mtk_chg_type_name[] = {
 	"Wireless Charger",
 	"Wireless Charger 10W",
 	"Wireless Charger 15W",
+	"Wireless Charger default",
 };
 
 static void dump_charger_name(enum charger_type type)
@@ -100,6 +101,7 @@ static void dump_charger_name(enum charger_type type)
 	case WIRELESS_CHARGER_5W:
 	case WIRELESS_CHARGER_10W:
 	case WIRELESS_CHARGER_15W:
+	case WIRELESS_CHARGER_DEFAULT:
 		pr_err("%s: charger type: %d, %s\n", __func__, type,
 			mtk_chg_type_name[type]);
 		break;
@@ -236,6 +238,7 @@ static int mt_ac_get_property(struct power_supply *psy,
 		/* Reset to 0 if charger type is USB */
 		if ((mtk_chg->chg_type == STANDARD_HOST) ||
 			(mtk_chg->chg_type == CHARGING_HOST) ||
+			(mtk_chg->chg_type == WIRELESS_CHARGER_DEFAULT) ||
 			(mtk_chg->chg_type == WIRELESS_CHARGER_5W) ||
 			(mtk_chg->chg_type == WIRELESS_CHARGER_10W) ||
 			(mtk_chg->chg_type == WIRELESS_CHARGER_15W))

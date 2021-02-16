@@ -95,6 +95,10 @@ static LCM_UTIL_FUNCS lcm_util = {
 
 #define dsi_set_cmdq_backlight(para_tbl, size, force_update) \
 			lcm_util.dsi_set_cmdq_backlight(para_tbl, size, force_update)
+#define dsi_set_cmdq_V4(para_tbl, size, force_update) \
+	lcm_util.dsi_set_cmdq_V4(para_tbl, size, force_update)
+#define dsi_get_cmdq_V4(para_tbl, size, force_update) \
+	lcm_util.dsi_get_cmdq_V4(para_tbl, size, force_update)
 #define dsi_set_cmdq_V2(cmd, count, ppara, force_update) \
 	lcm_util.dsi_set_cmdq_V2(cmd, count, ppara, force_update)
 #define dsi_set_cmdq(pdata, queue_size, force_update)	 \
@@ -116,7 +120,8 @@ static LCM_UTIL_FUNCS lcm_util = {
 #define VID_FT_KD_INX     0x7		/* KD, using FT8201 IC, add from EVT */
 #define VID_FT_STARRY_BOE 0x0		/* STARRY, using FT8201 IC, add from EVT */
 
-#define VID_NULL        0xff	/* NULL */
+#define VID_NULL          0xff	/* NULL */
+#define RSVD_CODE         0x81	/* NULL */
 
 /*
  * power on sequnce: vrf18/AVDD/AVEE -> LP11 -> RESET high
@@ -225,26 +230,48 @@ static struct LCM_setting_table deep_standby_setting[] = {
 	{0x05, 1, {0xA5} }
 };
 
+
+#define WORKAROUND_FT8201_SETUP_LCM_CABC_THROUGH_TOUCH_I2C
+
+#ifdef WORKAROUND_FT8201_SETUP_LCM_CABC_THROUGH_TOUCH_I2C
+
+#define CABC_ON_VAL  0x03
+#define CABC_OFF_VAL 0x00
+extern int ft8201_share_cabc_write(u8 mode);
+extern int ft8201_share_cabc_read(u8 *mode);
+
+#else
+
 #define	DSI_DCS_SHORT_PACKET_ID_0	0x05
 #define	DSI_DCS_SHORT_PACKET_ID_1	0x15
 #define	DSI_DCS_LONG_PACKET_ID		0x39
 #define	DSI_DCS_READ_PACKET_ID		0x06
 
-static LCM_setting_table_V3 cabc_on_setting[] = {
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x5A} },
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x23} },
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x95, 1, {0x03} },
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x2f} },
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x01} }
+static struct LCM_setting_table_V4 cabc_on_setting[] = {
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x5A}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x23}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x95, 1, {0x03}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x2F}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x01}, 0 }
 };
 
-static LCM_setting_table_V3 cabc_off_setting[] = {
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x5A} },
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x23} },
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x95, 1, {0x00} },
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x2F} },
-	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x02} }
+static struct LCM_setting_table_V4 cabc_read[] = {
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x5A}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x23}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x95, 1, {0x03}, 1 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x2F}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x03}, 0 }
 };
+
+static struct LCM_setting_table_V4 cabc_off_setting[] = {
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x5A}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x23}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x95, 1, {0x00}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x51, 1, {0x2F}, 0 },
+	{DSI_DCS_SHORT_PACKET_ID_1, 0x50, 1, {0x02}, 0 }
+};
+
+#endif
 
 #define BOARD_TYPE_TRONA    0x5E
 #define BOARD_REV_PROTO     0x00
@@ -252,8 +279,6 @@ static LCM_setting_table_V3 cabc_off_setting[] = {
 #define BOARD_REV_EVT       0x20
 #define BOARD_REV_DVT       0x30
 #define BOARD_REV_PVT       0x40
-static unsigned int g_board_rev = VID_NULL;
-static unsigned int g_board_type = VID_NULL;
 extern unsigned int idme_get_board_rev(void);
 extern unsigned int idme_get_board_type(void);
 
@@ -684,17 +709,8 @@ static unsigned int get_lcm_id(void)
 		vendor_id_tmp = buffer[1] > LCM_ID1_VENDOR_SHIFT;
 		LCM_LOGI("vendor_id_tmp = 0x%x", vendor_id_tmp);
 
-		if (g_board_type == VID_NULL)
-			g_board_type = idme_get_board_type();
-
-		if (g_board_type == BOARD_TYPE_TRONA) {
-			if (g_board_rev == VID_NULL)
-				g_board_rev = idme_get_board_rev();
-			/* only skip when board=hvt && id2=0x00(normal is 0x81) */
-			skiplcmid0 = (g_board_rev == BOARD_REV_HVT) && (buffer[2] == 0x00);
-		} else {
-			skiplcmid0 = 0;
-		}
+		/* ID2(addr=0x81) value is reserved as 0x81. use this to check if it's a ft8201 driver IC */
+		skiplcmid0 = (buffer[2] != RSVD_CODE);
 
 		if ((vendor_id_tmp == VID_FT_KD_HSD) ||
 			(vendor_id_tmp == VID_FT_KD_MANTIX) ||
@@ -982,43 +998,6 @@ static int __init get_lk_parameter(char *str)
 }
 __setup("lcm_id=", get_lk_parameter);
 
-#if (LCM_DSI_CMD_MODE)
-static void lcm_update(unsigned int x, unsigned int y, unsigned int width, unsigned int height)
-{
-	unsigned int x0 = x;
-	unsigned int y0 = y;
-	unsigned int x1 = x0 + width - 1;
-	unsigned int y1 = y0 + height - 1;
-
-	unsigned char x0_MSB = ((x0 >> 8) & 0xFF);
-	unsigned char x0_LSB = (x0 & 0xFF);
-	unsigned char x1_MSB = ((x1 >> 8) & 0xFF);
-	unsigned char x1_LSB = (x1 & 0xFF);
-	unsigned char y0_MSB = ((y0 >> 8) & 0xFF);
-	unsigned char y0_LSB = (y0 & 0xFF);
-	unsigned char y1_MSB = ((y1 >> 8) & 0xFF);
-	unsigned char y1_LSB = (y1 & 0xFF);
-
-	unsigned int data_array[16];
-
-	data_array[0] = 0x00053902;
-	data_array[1] = (x1_MSB << 24) | (x0_LSB << 16) | (x0_MSB << 8) | 0x2a;
-	data_array[2] = (x1_LSB);
-	dsi_set_cmdq(data_array, 3, 1);
-
-	data_array[0] = 0x00053902;
-	data_array[1] = (y1_MSB << 24) | (y0_LSB << 16) | (y0_MSB << 8) | 0x2b;
-	data_array[2] = (y1_LSB);
-	dsi_set_cmdq(data_array, 3, 1);
-
-	data_array[0] = 0x00290508;
-	dsi_set_cmdq(data_array, 1, 1);
-
-	data_array[0] = 0x002c3909;
-	dsi_set_cmdq(data_array, 1, 0);
-}
-#endif
-
 static void push_table(struct LCM_setting_table *table, unsigned int count, unsigned char force_update)
 {
 	unsigned int i;
@@ -1049,6 +1028,9 @@ static void push_table(struct LCM_setting_table *table, unsigned int count, unsi
 static void lcm_setbacklight_mode(unsigned int mode)
 {
 	static unsigned last_mode = CABC_OFF;
+#ifndef WORKAROUND_FT8201_SETUP_LCM_CABC_THROUGH_TOUCH_I2C
+	int ret;
+#endif
 
 	LCM_LOGI("%s setup CABC mode=%d\n", __func__, mode);
 
@@ -1067,14 +1049,36 @@ static void lcm_setbacklight_mode(unsigned int mode)
 	switch (mode) {
 	case CABC_MOVIE:
 		LCM_DBG("CABC_MOVIE\n");
-		dsi_set_cmdq_backlight(cabc_on_setting,
-			sizeof(cabc_on_setting) / sizeof(LCM_setting_table_V3), 1);
+#ifdef WORKAROUND_FT8201_SETUP_LCM_CABC_THROUGH_TOUCH_I2C
+		if (ft8201_share_cabc_write(CABC_ON_VAL) < 0)
+			LCM_ERR("CABC write via I2C fail");
+#else
+		dsi_set_cmdq_V4(cabc_on_setting,
+			sizeof(cabc_on_setting)
+			/ sizeof(struct LCM_setting_table_V4), 1);
+		ret = dsi_get_cmdq_V4(cabc_read,
+			sizeof(cabc_read)
+			/ sizeof(struct LCM_setting_table_V4), 1);
+		LCM_LOGI("CABC_MOVIE: 0x95=0x%x\n", ret);
+#endif
 		break;
+
 	case CABC_OFF:
 		LCM_DBG("CABC_OFF\n");
-		dsi_set_cmdq_backlight(cabc_off_setting,
-			sizeof(cabc_off_setting) / sizeof(LCM_setting_table_V3), 1);
+#ifdef WORKAROUND_FT8201_SETUP_LCM_CABC_THROUGH_TOUCH_I2C
+		if (ft8201_share_cabc_write(CABC_OFF_VAL) < 0)
+			LCM_ERR("CABC Write via I2C fail");
+#else
+		dsi_set_cmdq_V4(cabc_off_setting,
+			sizeof(cabc_off_setting)
+			/ sizeof(struct LCM_setting_table_V4), 1);
+		ret = dsi_get_cmdq_V4(cabc_read,
+			sizeof(cabc_read)
+			/ sizeof(struct LCM_setting_table_V4), 1);
+		LCM_LOGI("CABC_MOVIE: 0x95=0x%x\n", ret);
+#endif
 		break;
+
 	default:
 		LCM_ERR("CABC mode %x is not supported now\n", mode);
 		break;

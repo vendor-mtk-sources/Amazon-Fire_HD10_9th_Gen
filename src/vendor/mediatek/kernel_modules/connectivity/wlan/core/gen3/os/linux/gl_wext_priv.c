@@ -54,6 +54,23 @@
 #define	CMD_OID_BUF_LENGTH	4096
 
 #define CMD_GET_WIFI_TYPE	"GET_WIFI_TYPE"
+#ifdef ENABLED_IN_ENGUSERDEBUG
+enum UT_TRIGGER_CHIP_RESET trChipReset = TRIGGER_RESET_START;
+#endif
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+#define CMD_FW_ACTIVE_STATISTICS   "fw_active_statistics"
+extern struct CMD_FW_ACTIVE_TIME_STATISTICS g_FwActiveTime;
+extern UINT32 g_FwActiveTimeStatus;
+#endif
+
+#define CMD_WIFI_ON_TIME_STATISTICS "wifi_on_time_statistics"
+
+extern struct WIFI_ON_TIME_STATISTICS wifiOnTimeStatistics;
+
+extern WAKEUP_STATISTIC g_arWakeupStatistic[WAKEUP_TYPE_NUM];
+extern UINT_32 g_wake_event_count[EVENT_ID_END];
+
+extern void updateWifiOnTimeStatistics(void);
 /*******************************************************************************
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
@@ -787,6 +804,13 @@ _priv_set_int(IN struct net_device *prNetDev,
 				 sizeof(PARAM_POWER_MODE_T), FALSE, FALSE, TRUE, &u4BufLen);
 		}
 		break;
+#ifdef ENABLED_IN_ENGUSERDEBUG
+	case PRIV_CMD_TRIGGER_CHIP_RESET:
+		{
+			trChipReset = (enum UT_TRIGGER_CHIP_RESET)pu4IntBuf[1];
+		}
+		break;
+#endif
 
 	case PRIV_CMD_WMM_PS:
 		{
@@ -2145,6 +2169,7 @@ priv_ate_set(IN struct net_device *prNetDev,
 	 * P_NDIS_TRANSPORT_STRUCT prNdisReq;
 	 * UINT_32 pu4IntBuf[2];
 	 */
+	UINT_32 u4CopySize = sizeof(aucOidBuf);
 
 	/* sanity check */
 	ASSERT(prNetDev);
@@ -2153,9 +2178,6 @@ priv_ate_set(IN struct net_device *prNetDev,
 	ASSERT(pcExtra);
 
 	/* init */
-	DBGLOG(REQ, INFO, "priv_set_string (%s)(%d)\n",
-	       (UINT_8 *) prIwReqData->data.pointer, (INT_32) prIwReqData->data.length);
-
 	if (GLUE_CHK_PR3(prNetDev, prIwReqData, pcExtra) == FALSE)
 		return -EINVAL;
 
@@ -2168,12 +2190,18 @@ priv_ate_set(IN struct net_device *prNetDev,
 	switch (u4SubCmd) {
 	case PRIV_QACMD_SET:
 		DBGLOG(REQ, INFO, " priv_ate_set PRIV_QACMD_SET\n");
+		u4CopySize = (prIwReqData->data.length < u4CopySize)
+			? prIwReqData->data.length : (u4CopySize - 1);
 		InBuf = aucOidBuf;
 		InBufLen = prIwReqData->data.length;
 		i4Status = 0;
 
-		if (copy_from_user(InBuf, prIwReqData->data.pointer, prIwReqData->data.length))
+		if (copy_from_user(InBuf, prIwReqData->data.pointer, u4CopySize))
 			return -EFAULT;
+		aucOidBuf[u4CopySize] = '\0';
+		DBGLOG(REQ, INFO, "PRIV_QACMD_SET: priv_set_string=(%s)(%u,%u)\n",
+			aucOidBuf, u4CopySize,
+			(UINT_32)prIwReqData->data.length);
 		i4Status = AteCmdSetHandle(prNetDev, InBuf, InBufLen);
 		break;
 
@@ -2256,27 +2284,27 @@ priv_get_string(IN struct net_device *prNetDev,
 	case PRIV_CMD_INT_STAT:
 	{
 		P_WAKEUP_STATISTIC *prWakeupSta = NULL;
-		prWakeupSta = prGlueInfo->prAdapter->arWakeupStatistic;
+		prWakeupSta = g_arWakeupStatistic;
 		pos += scnprintf(buf + pos, u4TotalLen - pos,
-				"Abnormal Interrupt:%d\n"
-				"Software Interrupt:%d\n"
-				"TX Interrupt:%d\n"
-				"RX data:%d\n"
-				"RX Event:%d\n"
-				"RX mgmt:%d\n"
-				"RX others:%d\n",
-				prWakeupSta[0].u2Count,
-				prWakeupSta[1].u2Count,
-				prWakeupSta[2].u2Count,
-				prWakeupSta[3].u2Count,
-				prWakeupSta[4].u2Count,
-				prWakeupSta[5].u2Count,
-				prWakeupSta[6].u2Count);
+				"Abnormal Interrupt:%u\n"
+				"Software Interrupt:%u\n"
+				"TX Interrupt:%u\n"
+				"RX data:%u\n"
+				"RX Event:%u\n"
+				"RX mgmt:%u\n"
+				"RX others:%u\n",
+				prWakeupSta[0].u4Count,
+				prWakeupSta[1].u4Count,
+				prWakeupSta[2].u4Count,
+				prWakeupSta[3].u4Count,
+				prWakeupSta[4].u4Count,
+				prWakeupSta[5].u4Count,
+				prWakeupSta[6].u4Count);
 		for (i = 0; i < EVENT_ID_END; i++) {
-			if (prGlueInfo->prAdapter->wake_event_count[i] > 0)
+			if (g_wake_event_count[i] > 0)
 				pos += scnprintf(buf + pos, u4TotalLen - pos,
-						"RX EVENT[0x%0x]:%d\n", i,
-						prGlueInfo->prAdapter->wake_event_count[i]);
+						"RX EVENT[0x%0x]:%u\n", i,
+						g_wake_event_count[i]);
 		}
 		break;
 	}
@@ -3063,7 +3091,6 @@ reqExtSetAcpiDevicePowerState(IN P_GLUE_INFO_T prGlueInfo,
 #define	CMD_BAND_ALL	3
 
 /* Mediatek private command */
-
 #define CMD_SET_SW_CTRL	        "SET_SW_CTRL"
 #define CMD_GET_SW_CTRL         "GET_SW_CTRL"
 #define CMD_SET_CFG             "SET_CFG"
@@ -3899,6 +3926,9 @@ int priv_driver_set_suspend_mode(IN struct net_device *prNetDev, IN char *pcComm
 			return 0;
 		}
 
+		/*need to update wifi on time statistics*/
+		updateWifiOnTimeStatistics();
+
 		prGlueInfo->fgIsInSuspendMode = fgEnable;
 
 		wlanSetSuspendMode(prGlueInfo, fgEnable);
@@ -4296,6 +4326,146 @@ int priv_driver_set_monitor(IN struct net_device *prNetDev, IN char *pcCommand, 
 }
 #endif
 
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+static int priv_driver_fw_active_time_statistics(IN struct net_device *prNetDev, IN PCHAR pcCommand,
+	IN int i4TotalLen)
+{
+	struct CMD_FW_ACTIVE_TIME_STATISTICS rCmdFwActiveTime = {0};
+	INT_32 i4Argc = 0;
+	PINT_8 apcArgv[WLAN_CFG_ARGV_MAX] = { 0 };
+	INT_32 i4ArgNum = 2;
+	INT_32 i4BytesWritten = 0;
+	P_GLUE_INFO_T prGlueInfo = NULL;
+	INT_32 rStatus = WLAN_STATUS_SUCCESS;
+	UINT_32 u4BufLen = 0;
+
+	ASSERT(prNetDev);
+	if (GLUE_CHK_PR2(prNetDev, pcCommand) == FALSE)
+		return -1;
+
+	DBGLOG(REQ, LOUD, "command is %s\n", pcCommand);
+	wlanCfgParseArgument(pcCommand, &i4Argc, apcArgv);
+	DBGLOG(REQ, LOUD, "argc is %i\n", i4Argc);
+
+	prGlueInfo = *((struct _GLUE_INFO_T **) netdev_priv(prNetDev));
+	if (NULL == prGlueInfo) {
+		DBGLOG(REQ, ERROR, "invalid parameter\n");
+		return -1;
+	}
+
+	if (i4Argc >= i4ArgNum) {
+		if (strnicmp(apcArgv[1], "start", strlen("start")) == 0) {
+			rCmdFwActiveTime.u4Action = FW_ACTIVE_TIME_STATISTICS_ACTION_START;
+			rStatus = kalIoctl(prGlueInfo, wlanoidSetFwActiveTimeStatistics,
+				&rCmdFwActiveTime,
+				sizeof(struct CMD_FW_ACTIVE_TIME_STATISTICS),
+				FALSE, FALSE, TRUE, &u4BufLen);
+			if (rStatus != WLAN_STATUS_SUCCESS) {
+				DBGLOG(REQ, WARN, "fail to enable fw active time statistics\n");
+				return -1;
+			}
+			g_FwActiveTimeStatus = 1;
+		} else if (strnicmp(apcArgv[1], "stop", strlen("stop")) == 0) {
+			rCmdFwActiveTime.u4Action = FW_ACTIVE_TIME_STATISTICS_ACTION_STOP;
+			rStatus = kalIoctl(prGlueInfo, wlanoidSetFwActiveTimeStatistics,
+				&rCmdFwActiveTime,
+				sizeof(struct CMD_FW_ACTIVE_TIME_STATISTICS),
+				FALSE, FALSE, TRUE, &u4BufLen);
+			if (rStatus != WLAN_STATUS_SUCCESS) {
+				DBGLOG(REQ, WARN, "fail to disable fw active time statistics\n");
+				return -1;
+			}
+			g_FwActiveTimeStatus = 0;
+		} else if (strnicmp(apcArgv[1], "get", strlen("get")) == 0) {
+			rCmdFwActiveTime.u4Action = FW_ACTIVE_TIME_STATISTICS_ACTION_GET;
+			rStatus = kalIoctl(prGlueInfo, wlanoidGetFwActiveTimeStatistics,
+				&rCmdFwActiveTime,
+				sizeof(struct CMD_FW_ACTIVE_TIME_STATISTICS),
+				TRUE, TRUE, TRUE, &u4BufLen);
+
+			/*construct statistics to upper layer*/
+			if (rStatus != WLAN_STATUS_SUCCESS) {
+				DBGLOG(REQ, WARN, "unable to get fw active time statistics\n");
+				return -1;
+			}
+
+			/*update driver statistics*/
+			g_FwActiveTime.u4TimeDuringScreenOn += rCmdFwActiveTime.u4TimeDuringScreenOn;
+			g_FwActiveTime.u4TimeDuringScreenOff += rCmdFwActiveTime.u4TimeDuringScreenOff;
+			g_FwActiveTime.u4HwTimeDuringScreenOn += rCmdFwActiveTime.u4HwTimeDuringScreenOn;
+			g_FwActiveTime.u4HwTimeDuringScreenOff += rCmdFwActiveTime.u4HwTimeDuringScreenOff;
+
+			i4BytesWritten = snprintf(pcCommand, i4TotalLen,
+				"TimeDuringScreenOn[%u] TimeDuringScreenOff[%u] ",
+				g_FwActiveTime.u4TimeDuringScreenOn,
+				g_FwActiveTime.u4TimeDuringScreenOff);
+			i4BytesWritten += snprintf(pcCommand + i4BytesWritten, i4TotalLen - i4BytesWritten,
+				"HwTimeDuringScreenOn[%u] HwTimeDuringScreenOff[%u]\n",
+				g_FwActiveTime.u4HwTimeDuringScreenOn,
+				g_FwActiveTime.u4HwTimeDuringScreenOff);
+			return i4BytesWritten;
+
+		} else {
+			DBGLOG(REQ, ERROR, "invalid parameter\n");
+			return -1;
+		}
+	} else {
+		DBGLOG(REQ, ERROR, "invalid parameter\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+#endif
+
+static int priv_driver_wifi_on_time_statistics(IN struct net_device *prNetDev, IN PCHAR pcCommand,
+	IN int i4TotalLen)
+{
+	INT_32 i4Argc = 0;
+	INT_8 *apcArgv[WLAN_CFG_ARGV_MAX] = { 0 };
+	INT_32 i4ArgNum = 2;
+	INT_32 i4BytesWritten = 0;
+	P_GLUE_INFO_T prGlueInfo = NULL;
+
+	ASSERT(prNetDev);
+	if (GLUE_CHK_PR2(prNetDev, pcCommand) == FALSE)
+		return -1;
+
+	DBGLOG(REQ, LOUD, "command is %s\n", pcCommand);
+	wlanCfgParseArgument(pcCommand, &i4Argc, apcArgv);
+	DBGLOG(REQ, LOUD, "argc is %i\n", i4Argc);
+
+	prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv(prNetDev));
+	if (NULL == prGlueInfo) {
+		DBGLOG(REQ, ERROR, "invalid parameter\n");
+		return -1;
+	}
+
+	if (i4Argc >= i4ArgNum) {
+		if (strnicmp(apcArgv[1], "get", strlen("get")) == 0) {
+			/*need to update wifi on time statistics*/
+			updateWifiOnTimeStatistics();
+
+			/*construct statistics to upper layer*/
+			i4BytesWritten = snprintf(pcCommand, i4TotalLen,
+				"TimeDuringScreenOn[%u] TimeDuringScreenOff[%u] ",
+				wifiOnTimeStatistics.u4WifiOnTimeDuringScreenOn,
+				wifiOnTimeStatistics.u4WifiOnTimeDuringScreenOff);
+			return i4BytesWritten;
+
+		} else {
+			DBGLOG(REQ, ERROR, "invalid parameter\n");
+			return -1;
+		}
+	} else {
+		DBGLOG(REQ, ERROR, "invalid parameter\n");
+		return -1;
+	}
+
+	return 0;
+}
+
 #if CFG_SUPPORT_BATCH_SCAN
 #define CMD_BATCH_SET           "WLS_BATCHING SET"
 #define CMD_BATCH_GET           "WLS_BATCHING GET"
@@ -4474,7 +4644,17 @@ INT_32 priv_driver_cmds(IN struct net_device *prNetDev, IN PCHAR pcCommand, IN I
 		} else if (!strncasecmp(pcCommand, CMD_NEW_ORIENTATION, strlen(CMD_NEW_ORIENTATION))) {
 		    i4BytesWritten = priv_driver_new_orientation(prNetDev, pcCommand, i4TotalLen);
 #endif
-		} else
+		}
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+		else if (!strncasecmp(pcCommand, CMD_FW_ACTIVE_STATISTICS, strlen(CMD_FW_ACTIVE_STATISTICS))) {
+			i4BytesWritten = priv_driver_fw_active_time_statistics(prNetDev, pcCommand, i4TotalLen);
+		}
+#endif
+		else if (!strncasecmp(pcCommand, CMD_WIFI_ON_TIME_STATISTICS, strlen(CMD_WIFI_ON_TIME_STATISTICS))) {
+			i4BytesWritten = priv_driver_wifi_on_time_statistics(prNetDev, pcCommand, i4TotalLen);
+		}
+
+		else
 			i4CmdFound = 0;
 	}
 	/* i4CmdFound */

@@ -61,6 +61,10 @@ typedef struct _CODE_MAPPING_T {
  ********************************************************************************
  */
 BOOLEAN fgIsBusAccessFailed = FALSE;
+#ifdef ENABLED_IN_ENGUSERDEBUG
+extern enum UT_TRIGGER_CHIP_RESET trChipReset;
+#endif
+
 
 /*******************************************************************************
  *                           P R I V A T E   D A T A
@@ -615,6 +619,14 @@ wlanAdapterStart(IN P_ADAPTER_T prAdapter, IN P_REG_INFO_T prRegInfo)
 		while (1) {
 			HAL_MCR_RD(prAdapter, MCR_WCIR, &u4Value);
 
+#ifdef ENABLED_IN_ENGUSERDEBUG
+			if (trChipReset == TRIGGER_RESET_RESOURCE_POLL_TIMEOUT) {
+				i = CFG_RESPONSE_POLLING_TIMEOUT;
+				DBGLOG(INIT, ERROR, "trigger chip reset POLL TIMEOUT %d \n",trChipReset);
+				trChipReset = TRIGGER_RESET_START;
+			}
+#endif
+
 			if (u4Value & WCIR_WLAN_READY) {
 				DBGLOG(INIT, INFO, "Ready bit asserted\n");
 				break;
@@ -1123,6 +1135,14 @@ WLAN_STATUS wlanAdapterStop(IN P_ADAPTER_T prAdapter)
 
 			/* 3. Wait til RDY bit has been cleard */
 			i = 0;
+#ifdef ENABLED_IN_ENGUSERDEBUG
+			if (trChipReset == TRIGGER_RESET_BUS_ACCESS_FAILED) {
+				fgIsBusAccessFailed = TRUE;
+				DBGLOG(INIT, ERROR, "trigger chip reset BUS FAILED %d \n",trChipReset);
+				trChipReset = TRIGGER_RESET_START;
+			}
+#endif
+
 			while (1) {
 				HAL_MCR_RD(prAdapter, MCR_WCIR, &u4Value);
 

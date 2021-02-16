@@ -730,6 +730,7 @@ int primary_display_esd_recovery(void)
 	/*after dsi_stop, we should enable the dsi basic irq.*/
 	dsi_basic_irq_enable(DISP_MODULE_DSI0, NULL);
 	disp_lcm_suspend(primary_get_lcm());
+	disp_lcm_suspend_power(primary_get_lcm());
 	DISPCHECK("[POWER]lcm suspend[end]\n");
 
 	mmprofile_log_ex(mmp_r, MMPROFILE_FLAG_PULSE, 0, 7);

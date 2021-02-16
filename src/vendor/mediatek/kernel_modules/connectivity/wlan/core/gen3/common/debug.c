@@ -568,7 +568,7 @@ VOID wlanPrintFwLog(PUINT_8 pucLogContent, UINT_16 u2MsgSize, UINT_8 ucMsgType)
 	switch (ucMsgType) {
 	case DEBUG_MSG_TYPE_ASCII:
 		pucLogContent[u2MsgSize] = '\0';
-		LOG_FUNC("%s\n", pucLogContent);
+		LOG_FUNC("[wlan_fw]%s\n", pucLogContent);
 		break;
 	case DEBUG_MSG_TYPE_MEM8:
 		DBGLOG_MEM8(RX, INFO, pucLogContent, u2MsgSize);

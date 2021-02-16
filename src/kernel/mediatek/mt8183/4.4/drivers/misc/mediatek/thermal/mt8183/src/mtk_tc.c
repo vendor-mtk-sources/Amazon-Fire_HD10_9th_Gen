@@ -1278,8 +1278,6 @@ void tscpu_thermal_initial_all_tc(void)
 void tscpu_config_all_tc_hw_protect(int temperature, int temperature2)
 {
 	int i = 0;
-	int wd_api_ret;
-	struct wd_api *wd_api;
 
 	tscpu_dprintk("tscpu_config_all_tc_hw_protect,temperature=%d,temperature2=%d,\n",
 		      temperature, temperature2);
@@ -1295,14 +1293,6 @@ void tscpu_config_all_tc_hw_protect(int temperature, int temperature2)
 	*this API provide by Weiqi Fu(RGU SW owner).
 	*/
 
-	wd_api_ret = get_wd_api(&wd_api);
-	if (wd_api_ret >= 0) {
-		wd_api->wd_thermal_direct_mode_config(WD_REQ_DIS, WD_REQ_RST_MODE);	/* reset mode */
-	} else {
-		tscpu_warn("%d FAILED TO GET WD API\n", __LINE__);
-		WARN_ON_ONCE(1);
-	}
-
 #if THERMAL_PERFORMANCE_PROFILE
 	do_gettimeofday(&end);
 
@@ -1315,16 +1305,6 @@ void tscpu_config_all_tc_hw_protect(int temperature, int temperature2)
 		if (tscpu_g_tc[i].ts_number == 0)
 			continue;
 		set_tc_trigger_hw_protect(temperature, temperature2, i); /* Move thermal HW protection ahead... */
-	}
-
-	/*Thermal need to config to direct reset mode
-	*  this API provide by Weiqi Fu(RGU SW owner).
-	*/
-	if (wd_api_ret >= 0) {
-		wd_api->wd_thermal_direct_mode_config(WD_REQ_EN, WD_REQ_RST_MODE);	/* reset mode */
-	} else {
-		tscpu_warn("%d FAILED TO GET WD API\n", __LINE__);
-		WARN_ON_ONCE(1);
 	}
 }
 

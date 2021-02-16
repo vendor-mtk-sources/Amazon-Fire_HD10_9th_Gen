@@ -2791,6 +2791,7 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 		break;
 	case ISP_GET_SUPPORTED_ISP_CLOCKS:
 		/* Set a default clk for EP */
+		memset((void *)&ispclks, 0, sizeof(struct ISP_CLK_INFO));
 		ispclks.clklevelcnt = 1;
 		ispclks.clklevel[lv] = 546;
 		LOG_NOTICE("Default DFS Clk level:%d for EP", ispclks.clklevel[lv]);
@@ -2856,6 +2857,8 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 			int result = 0;
 			u64 freq_steps[ISP_CLK_LEVEL_CNT];
 
+			memset((void *)&ispclks, 0,
+			    sizeof(struct ISP_CLK_INFO));
 			/* Call mmdvfs_qos_get_freq_steps to get supported frequency */
 			result = mmdvfs_qos_get_freq_steps(PM_QOS_CAM_FREQ, freq_steps, (u32 *)&ispclks.clklevelcnt);
 
@@ -2880,6 +2883,8 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 			target_clk = ispclks.clklevel[ispclks.clklevelcnt - 1];
 		#else
 			/* To get how many clk levels this platform is supported */
+			memset((void *)&ispclks, 0,
+			    sizeof(struct ISP_CLK_INFO));
 			ispclks.clklevelcnt = mmdvfs_qos_get_thres_count(&isp_qos, MMDVFS_PM_QOS_SUB_SYS_CAMERA);
 
 			if (ispclks.clklevelcnt > ISP_CLK_LEVEL_CNT) {

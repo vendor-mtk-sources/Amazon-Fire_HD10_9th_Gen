@@ -61,6 +61,42 @@ struct mtk_cooler_platform_data {
 	int levels[THERMAL_MAX_TRIPS];
 };
 
+#ifdef CONFIG_THERMAL_FOD
+#include <linux/delay.h>
+#include <linux/time.h>
+#include <linux/power_supply.h>
+extern struct pinctrl *fod_vs_pctl;
+#define fod_printk(fmt, args...) pr_debug("[FOD_INFO]" fmt, ##args)
+
+#define FOD_VS_DEVICEID		3
+#define PINCTRL_WPC_NTC		"switch_wpc_ntc"
+#define PINCTRL_EMMC_NTC	"switch_emmc_ntc"
+#define NTC_WPC			1
+#define NTC_EMMC		0
+#define TIME_TO_WORK		0
+#define NUM_OF_COLLECT		5
+#define TASK_DURATION		3000
+
+struct vs_temp_data {
+	int temperature;
+	struct list_head list;
+};
+
+struct fod_algo {
+	unsigned int work_delay;
+	unsigned int window_size;
+	unsigned int polling_interval;
+	unsigned int wpc_online_status;
+	unsigned int fod_temp_cnt;
+	struct delayed_work wpc_event_wq;
+	struct vs_temp_data fod_temp;
+	struct list_head *cur_list;
+	struct notifier_block psy_nb;
+	struct power_supply *psy;
+	struct mutex fod_lock;
+};
+#endif
+
 #ifdef CONFIG_AMZN_THERMAL_VIRTUAL_SENSOR
 struct vs_thermal_platform_data {
 	int num_trips;
@@ -157,6 +193,7 @@ struct thermal_dev {
 	struct thermal_dev_params *tdp;
 	int current_temp;
 	long off_temp;
+	int first_data_get;
 };
 
 /**
@@ -220,11 +257,18 @@ enum vs_thermal_cooler_id {
 	VS_THERMAL_COOLER_BACKLIGHT,
 	VS_THERMAL_COOLER_BUDGET,
 	VS_THERMAL_COOLER_WIRELESS_CHG,
+#ifdef CONFIG_THERMAL_FOD
+	VS_THERMAL_COOLER_FOD_WIRELESS_CHG,
+#endif
 	VS_THERMAL_COOLER_COUNT
 };
 
 /* Get the current temperature of the thermal sensor. */
+#ifdef CONFIG_THERMAL_FOD
+int vs_thermal_sensor_get_temp(enum vs_thermal_sensor_id id, int index, int device);
+#else
 int vs_thermal_sensor_get_temp(enum vs_thermal_sensor_id id, int index);
+#endif
 /* Set a level limit via the thermal cooler. */
 int vs_set_cooling_level(struct thermal_cooling_device *cdev,
 	enum vs_thermal_cooler_id id, int level_limit);

@@ -254,6 +254,7 @@ typedef enum _ENUM_PARAM_MEDIA_STATE_T {
 	PARAM_MEDIA_STATE_CONNECTED,
 	PARAM_MEDIA_STATE_DISCONNECTED,
 	PARAM_MEDIA_STATE_DISCONNECT_PREV,
+	PARAM_MEDIA_STATE_DISCONNECTED_LOCALLY,
 	PARAM_MEDIA_STATE_TO_BE_INDICATED	/* for following MSDN re-association behavior */
 } ENUM_PARAM_MEDIA_STATE_T, *P_ENUM_PARAM_MEDIA_STATE_T;
 
@@ -1707,6 +1708,27 @@ enum ENUM_WIFI_LOG_LEVEL_SUPPORT_T {
 	ENUM_WIFI_LOG_LEVEL_SUPPORT_NUM
 };
 
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+#define FW_ACTIVE_TIME_STATISTICS_ACTION_STOP   (0)
+#define FW_ACTIVE_TIME_STATISTICS_ACTION_START  (1)
+#define FW_ACTIVE_TIME_STATISTICS_ACTION_GET    (2)
+struct CMD_FW_ACTIVE_TIME_STATISTICS {
+	UINT_32 u4Action;
+	UINT_32 u4TimeDuringScreenOn; /*unit ms*/
+	UINT_32 u4TimeDuringScreenOff; /*unit ms*/
+	UINT_32 u4HwTimeDuringScreenOn; /*unit ms*/
+	UINT_32 u4HwTimeDuringScreenOff; /*unit ms*/
+};
+#endif
+struct WIFI_ON_TIME_STATISTICS {
+	/*record total wifi on time (unit: ms) during screen on stage*/
+	UINT_32 u4WifiOnTimeDuringScreenOn;
+	/*record total wifi on time (unit: ms) during screen off stage*/
+	UINT_32 u4WifiOnTimeDuringScreenOff;
+	/*record the last update time*/
+	OS_SYSTIME lastUpdateTime;
+};
+
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -2504,4 +2526,14 @@ WLAN_STATUS wlanoidNotifyTRxStats(IN P_ADAPTER_T prAdapter,
 WLAN_STATUS wlanoidNotifyChargeStatus(IN P_ADAPTER_T prAdapter,
 	IN PVOID pvQueryBuffer, IN UINT_32 u4QueryBufferLen, OUT PUINT_32 pu4QueryInfoLen);
 #endif
+
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+UINT_32
+wlanoidSetFwActiveTimeStatistics(IN P_ADAPTER_T prAdapter,
+	IN PVOID pvSetBuffer, IN UINT_32 u4SetBufferLen, OUT PUINT_32 pu4SetInfoLen);
+UINT_32
+wlanoidGetFwActiveTimeStatistics(IN P_ADAPTER_T prAdapter,
+	IN PVOID pvQueryBuffer, IN UINT_32 u4QueryBufferLen, OUT PUINT_32 pu4QueryInfoLen);
+#endif
+
 #endif /* _WLAN_OID_H */

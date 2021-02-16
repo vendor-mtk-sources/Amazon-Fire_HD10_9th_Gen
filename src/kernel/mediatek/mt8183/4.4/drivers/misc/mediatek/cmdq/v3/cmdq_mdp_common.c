@@ -410,12 +410,13 @@ static void cmdq_mdp_isp_begin_task_virtual(struct TaskStruct *cmdq_task, struct
 	}
 	/* implement for pass2 only task */
 	CMDQ_MSG("enter %s task:0x%p engine:0x%llx\n", __func__, cmdq_task, cmdq_task->engineFlag);
-	pmqos_curr_record = kzalloc(sizeof(struct mdp_pmqos_record), GFP_KERNEL);
-	cmdq_task->user_private = pmqos_curr_record;
 	do_gettimeofday(&curr_time);
 
 	if (!cmdq_task->prop_addr)
 		return;
+
+	pmqos_curr_record = kzalloc(sizeof(struct mdp_pmqos_record), GFP_KERNEL);
+	cmdq_task->user_private = pmqos_curr_record;
 
 	isp_curr_pmqos = (struct mdp_pmqos *)cmdq_task->prop_addr;
 	pmqos_curr_record->submit_tm = curr_time;
@@ -486,15 +487,15 @@ static void cmdq_mdp_begin_task_virtual(struct TaskStruct *cmdq_task, struct Tas
 	uint32_t *addr1 = NULL;
 	uint32_t *addr2 = NULL;
 
-	pmqos_curr_record = kzalloc(sizeof(struct mdp_pmqos_record), GFP_KERNEL);
-	cmdq_task->user_private = pmqos_curr_record;
-
 	do_gettimeofday(&curr_time);
 
 	CMDQ_MSG("enter %s with task:0x%p engine:0x%llx\n", __func__, cmdq_task, cmdq_task->engineFlag);
 
 	if (!cmdq_task->prop_addr)
 		return;
+
+	pmqos_curr_record = kzalloc(sizeof(struct mdp_pmqos_record), GFP_KERNEL);
+	cmdq_task->user_private = pmqos_curr_record;
 
 	mdp_curr_pmqos = (struct mdp_pmqos *)cmdq_task->prop_addr;
 	pmqos_curr_record->submit_tm = curr_time;
@@ -1670,4 +1671,25 @@ s32 cmdq_mdp_dump_wrot0_usage(void)
 	return usage;
 }
 
-
+#include "mdp_base.h"
+u32 cmdq_mdp_get_hw_reg(enum MDP_ENG_BASE base, u16 offset)
+{
+	if ((offset > 0xFFC) || (offset & 0x3)) {
+		CMDQ_ERR("%s: invalid offset:%#x\n", __func__, offset);
+		return 0;
+	}
+	if (base >= ENGBASE_COUNT) {
+		CMDQ_ERR("%s: invalid engine:%u, offset:%#x\n",
+			__func__, base, offset);
+		return 0;
+	}
+	return mdp_base[base] + offset;
+}
+u32 cmdq_mdp_get_hw_port(enum MDP_ENG_BASE base)
+{
+	if (base >= ENGBASE_COUNT) {
+		CMDQ_ERR("%s: invalid engine:%u\n", __func__, base);
+		return 0;
+	}
+	return mdp_engine_port[base];
+}

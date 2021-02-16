@@ -258,12 +258,39 @@ bool SetDl2ToI2s1Dac2(unsigned int ConnectionState)
 	return true;
 }
 
+bool SetDl1ToVul(unsigned int ConnectionState)
+{
+	SetConnectionState(ConnectionState, Soc_Aud_InterConnectionInput_I05,
+			Soc_Aud_InterConnectionOutput_O09);
+	SetConnectionState(ConnectionState, Soc_Aud_InterConnectionInput_I06,
+			Soc_Aud_InterConnectionOutput_O10);
+	return true;
+}
+
 bool SetDl2ToVul(unsigned int ConnectionState)
 {
 	SetConnectionState(ConnectionState, Soc_Aud_InterConnectionInput_I07,
 			Soc_Aud_InterConnectionOutput_O09);
 	SetConnectionState(ConnectionState, Soc_Aud_InterConnectionInput_I08,
 			Soc_Aud_InterConnectionOutput_O10);
+	return true;
+}
+
+bool SetDl1ToVulData2(unsigned int ConnectionState)
+{
+	SetConnectionState(ConnectionState, Soc_Aud_InterConnectionInput_I05,
+			Soc_Aud_InterConnectionOutput_O21);
+	SetConnectionState(ConnectionState, Soc_Aud_InterConnectionInput_I06,
+			Soc_Aud_InterConnectionOutput_O22);
+	return true;
+}
+
+bool SetDl2ToVulData2(unsigned int ConnectionState)
+{
+	SetConnectionState(ConnectionState, Soc_Aud_InterConnectionInput_I07,
+			Soc_Aud_InterConnectionOutput_O21);
+	SetConnectionState(ConnectionState, Soc_Aud_InterConnectionInput_I08,
+			Soc_Aud_InterConnectionOutput_O22);
 	return true;
 }
 
@@ -760,7 +787,13 @@ static const struct connection_link_t mConnectionLink[] = {
 	{Soc_Aud_AFE_IO_Block_I2S0_CH2, Soc_Aud_AFE_IO_Block_MODEM_PCM_2_O_CH4, SetI2s0Ch2ToModem2OutCh4},
 	{Soc_Aud_AFE_IO_Block_MEM_DL2, Soc_Aud_AFE_IO_Block_I2S1_DAC, SetDl2ToI2s1Dac},
 	{Soc_Aud_AFE_IO_Block_MEM_DL2, Soc_Aud_AFE_IO_Block_I2S1_DAC_2, SetDl2ToI2s1Dac2},
+	{Soc_Aud_AFE_IO_Block_MEM_DL1,
+			Soc_Aud_AFE_IO_Block_MEM_VUL, SetDl1ToVul},
 	{Soc_Aud_AFE_IO_Block_MEM_DL2, Soc_Aud_AFE_IO_Block_MEM_VUL, SetDl2ToVul},
+	{Soc_Aud_AFE_IO_Block_MEM_DL1,
+			Soc_Aud_AFE_IO_Block_MEM_VUL_DATA2, SetDl1ToVulData2},
+	{Soc_Aud_AFE_IO_Block_MEM_DL2,
+			Soc_Aud_AFE_IO_Block_MEM_VUL_DATA2, SetDl2ToVulData2},
 	{Soc_Aud_AFE_IO_Block_I2S0, Soc_Aud_AFE_IO_Block_HW_GAIN1_OUT, SetI2s0ToHwGain1Out},
 	{Soc_Aud_AFE_IO_Block_I2S_CONNSYS, Soc_Aud_AFE_IO_Block_HW_GAIN1_OUT, SetConnsysToHwGain1Out},
 	{Soc_Aud_AFE_IO_Block_HW_GAIN1_IN, Soc_Aud_AFE_IO_Block_I2S1_DAC, SetHwGain1InToI2s1Dac},

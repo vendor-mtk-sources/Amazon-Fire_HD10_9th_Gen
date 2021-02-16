@@ -403,12 +403,9 @@ obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
 obj-$(CONFIG_SND_SOC_RT5509)	+= snd-soc-rt5509.o
 
 # Adf dsp firmware
-obj-$(CONFIG_SND_SOC_RT551X_ADF) += snd-soc-rt551x-adf.o
-obj-$(CONFIG_SND_SOC_RT551X_ADF) += snd-soc-rt551x-adf-spi.o
-ifeq ($(CONFIG_SND_SOC_RT551X_ADF),y)
-  obj-y    += amazon/
-  subdir-ccflags-y += -I$(src)/amazon/include/
-endif
+obj-$(CONFIG_AMAZON_DSP_FRAMEWORK) += snd-soc-rt551x-adf.o
+obj-$(CONFIG_AMAZON_DSP_FRAMEWORK) += snd-soc-rt551x-adf-spi.o
+ccflags-$(CONFIG_AMAZON_DSP_FRAMEWORK) += -I$(srctree)/drivers/staging/amazon/dspframework/include/
 
 # Old dsp firmware
 obj-$(CONFIG_SND_SOC_RT551X) += snd-soc-rt551x.o

@@ -46,6 +46,10 @@
 #include <linux/thermal_framework.h>
 #endif
 
+#ifdef CONFIG_THERMAL_FOD
+#include "mt-plat/charger_class.h"
+#endif
+
 /*=============================================================
  *Weak functions
  *=============================================================
@@ -464,7 +468,6 @@ static struct BTS_TEMPERATURE BTS_Temperature_Table7[] = {
 	{125, 2522}
 };
 
-
 /* convert register to temperature  */
 static __s16 mtkts_bts_thermistor_conver_temp(__s32 Res)
 {
@@ -544,6 +547,107 @@ static __s16 mtk_ts_bts_volt_to_temp(__u32 dwVolt)
 	return BTS_TMP;
 }
 
+#ifdef CONFIG_THERMAL_FOD
+static DEFINE_MUTEX(BTS_SWITCH_lock);
+int get_hw_bts_temp_export(int aux_channel, int level)
+{
+	int ret = 0, data[4], i, ret_value = 0, ret_temp = 0, output;
+	int times = 1, Channel = aux_channel;	/* 6752=0(AUX_IN0_NTC) */
+	static int valid_temp;
+#if defined(APPLY_AUXADC_CALI_DATA)
+	int auxadc_cali_temp;
+#endif
+
+	if (IMM_IsAdcInitReady() == 0) {
+		mtkts_bts_printk("[thermal_auxadc_get_data]: AUXADC is not ready\n");
+		return 0;
+	}
+
+	if (get_charger_by_name("wireless_chg") != NULL) {
+		mutex_lock(&BTS_SWITCH_lock);
+		if (aux_channel == BTS3_RAP_ADC_CHANNEL) {
+			struct pinctrl_state *ntc_switch;
+
+			/* ntc switch only available on device including virtual sensor with fod feature */
+			if (!IS_ERR_OR_NULL(fod_vs_pctl)) {
+				if (level)
+					ntc_switch = pinctrl_lookup_state(fod_vs_pctl, PINCTRL_WPC_NTC);
+				else
+					ntc_switch = pinctrl_lookup_state(fod_vs_pctl, PINCTRL_EMMC_NTC);
+
+				if (IS_ERR(ntc_switch)) {
+					pr_err("failed to find pinctrl [%s]\n", ((level > 0) ? PINCTRL_WPC_NTC : PINCTRL_EMMC_NTC));
+					return -ENODEV;
+				} else
+					pinctrl_select_state(fod_vs_pctl, ntc_switch);
+
+				/* it will need > 200ms for the delay time for NTC reading */
+				msleep(200);
+			}
+		}
+	}
+
+	i = times;
+	while (i--) {
+		ret_value = IMM_GetOneChannelValue(Channel, data, &ret_temp);
+		if (ret_value) {/* AUXADC is busy */
+#if defined(APPLY_AUXADC_CALI_DATA)
+			auxadc_cali_temp = valid_temp;
+#else
+			ret_temp = valid_temp;
+#endif
+		} else {
+#if defined(APPLY_AUXADC_CALI_DATA)
+		/*
+		 * by reference mtk_auxadc.c
+		 *
+		 * convert to volt:
+		 *	data[0] = (rawdata * 1500 / (4096 + cali_ge)) / 1000;
+		 *
+		 * convert to mv, need multiply 10:
+		 *	data[1] = (rawdata * 150 / (4096 + cali_ge)) % 100;
+		 *
+		 * provide high precision mv:
+		 *	data[2] = (rawdata * 1500 / (4096 + cali_ge)) % 1000;
+		 */
+			auxadc_cali_temp = data[0]*1000+data[2];
+			valid_temp = auxadc_cali_temp;
+#else
+			valid_temp = ret_temp;
+#endif
+		}
+
+#if defined(APPLY_AUXADC_CALI_DATA)
+		ret += auxadc_cali_temp;
+		mtkts_bts_dprintk(
+			"[thermal_auxadc_get_data(AUX_IN%d_NTC)]: ret_temp=%d\n",
+			Channel, auxadc_cali_temp);
+#else
+		ret += ret_temp;
+		mtkts_bts_dprintk(
+			"[thermal_auxadc_get_data(AUX_IN%d_NTC)]: ret_temp=%d\n",
+			Channel, ret_temp, Channel);
+#endif
+	}
+
+	if (get_charger_by_name("wireless_chg") != NULL)
+		mutex_unlock(&BTS_SWITCH_lock);
+
+
+	/* Mt_auxadc_hal.c */
+	/* #define VOLTAGE_FULL_RANGE  1500 // VA voltage */
+	/* #define AUXADC_PRECISE      4096 // 12 bits */
+#if defined(APPLY_AUXADC_CALI_DATA)
+#else
+	ret = ret * 1500 / 4096;
+#endif
+	/* ret = ret*1800/4096;//82's ADC power */
+	mtkts_bts_dprintk("APtery output mV = %d\n", ret);
+	output = mtk_ts_bts_volt_to_temp(ret);
+	mtkts_bts_dprintk("BTS output temperature = %d\n", output);
+	return output;
+}
+#else
 int get_hw_bts_temp_export(int aux_channel)
 {
 
@@ -615,6 +719,7 @@ int get_hw_bts_temp_export(int aux_channel)
 	mtkts_bts_dprintk("BTS output temperature = %d\n", output);
 	return output;
 }
+#endif
 
 static int get_hw_bts_temp(void)
 {
@@ -1195,11 +1300,11 @@ static ssize_t mtkts_bts_param_write(struct file *file, const char __user *buffe
 		/* external pin: 0/1/12/13/14/15, can't use pin:2/3/4/5/6/7/8/9/10/11,
 		*choose "adc_channel=11" to check if there is any param input
 		*/
-		if ((ptr_mtktsbts_parm_data->adc_channel >= 2) && (ptr_mtktsbts_parm_data->adc_channel <= 11))
+		if (ptr_mtktsbts_parm_data->adc_channel < 0 || ptr_mtktsbts_parm_data->adc_channel > 15)
 			/* check unsupport pin value, if unsupport, set channel = 1 as default setting. */
 			g_RAP_ADC_channel = AUX_IN0_NTC;
 		else {
-			/* check if there is any param input, if not using default g_RAP_ADC_channel:1 */
+			/* check if there is any param input, if not using default g_RAP_ADC_channel:0 */
 			if (ptr_mtktsbts_parm_data->adc_channel != 11)
 				g_RAP_ADC_channel = ptr_mtktsbts_parm_data->adc_channel;
 			else

@@ -39,6 +39,8 @@
 #include <linux/reset-controller.h>
 #include <linux/reset.h>
 #include <linux/sched.h>
+#include <linux/timer.h>
+#include <linux/slab.h>
 #ifdef CONFIG_MT6397_MISC
 #include <linux/mfd/mt6397/rtc_misc.h>
 #endif
@@ -470,6 +472,35 @@ int mtk_rgu_cfg_dvfsrc(int enable)
 	return 0;
 }
 
+#ifdef CONFIG_AMAZON_BOOTUP_KEEP_WATCHDOG
+static void mtk_wdt_kick_timer_func(unsigned long data)
+{
+	struct timer_list *timer = (struct timer_list *)data;
+
+	mtk_wdt_ping(wdt_dev);
+	del_timer(timer);
+	kfree(timer);
+	pr_info("Kick timer for mtk_wdt is stopped.\n");
+}
+
+static void mtk_wdt_kick_timer_create(void)
+{
+	struct timer_list *timer;
+
+	timer = kzalloc(sizeof(struct timer_list), GFP_ATOMIC);
+	if (!timer)
+		return;
+
+	init_timer(timer);
+	timer->function = mtk_wdt_kick_timer_func;
+	timer->data = (unsigned long)timer;
+	timer->expires = jiffies + msecs_to_jiffies(
+		(WDT_MAX_TIMEOUT - 1) * MSEC_PER_SEC);
+	add_timer(timer);
+	pr_info("Kick timer for mtk_wdt is created.\n");
+}
+#endif /* CONFIG_AMAZON_BOOTUP_KEEP_WATCHDOG */
+
 static int mtk_wdt_probe(struct platform_device *pdev)
 {
 	struct mtk_wdt_dev *mtk_wdt;
@@ -521,6 +552,7 @@ static int mtk_wdt_probe(struct platform_device *pdev)
 #ifdef CONFIG_AMAZON_BOOTUP_KEEP_WATCHDOG
 	mtk_wdt_start(&mtk_wdt->wdt_dev);
 	mtk_wdt_ping(&mtk_wdt->wdt_dev);
+	mtk_wdt_kick_timer_create();
 #else
 	mtk_wdt_stop(&mtk_wdt->wdt_dev);
 #endif /* CONFIG_AMAZON_BOOTUP_KEEP_WATCHDOG */

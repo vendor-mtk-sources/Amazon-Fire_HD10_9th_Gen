@@ -79,6 +79,8 @@ config USER_BUILD
 	---help---
 	  Indicate if user build
 
+source "drivers/staging/amazon/dspframework/Kconfig"
+
 endif # if AMAZON
 
 endmenu

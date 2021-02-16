@@ -35,6 +35,9 @@
 ********************************************************************************
 */
 #include "precomp.h"
+#ifdef ENABLED_IN_ENGUSERDEBUG
+extern  enum UT_TRIGGER_CHIP_RESET trChipReset;
+#endif
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -216,6 +219,17 @@ BOOLEAN nicpmSetDriverOwn(IN P_ADAPTER_T prAdapter)
 		HAL_MCR_RD(prAdapter, MCR_WHLPCR, &u4RegValue);
 
 		fgTimeout = ((kalGetTimeTick() - u4CurrTick) > LP_OWN_BACK_TOTAL_DELAY_MS) ? TRUE : FALSE;
+#ifdef ENABLED_IN_ENGUSERDEBUG
+		if (trChipReset == TRIGGER_RESET_LP_OWN_FAILED) {
+			i= LP_OWN_BACK_FAILED_RETRY_CNT + 1;
+			fgTimeout= TRUE;
+			u4RegValue= 0;
+			DBGLOG(NIC, ERROR,"trigger chip reset lP OWN TRIGGER %d \n",trChipReset);
+			trChipReset = TRIGGER_RESET_START;
+			prAdapter->u4OwnFailedCount = 0;
+			prAdapter->u4OwnFailedLogCount = LP_OWN_BACK_FAILED_RESET_CNT;
+		}
+#endif
 
 		if (u4RegValue & WHLPCR_FW_OWN_REQ_SET) {
 			prAdapter->fgIsFwOwn = FALSE;

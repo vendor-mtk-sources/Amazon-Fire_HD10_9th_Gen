@@ -2934,7 +2934,7 @@ static struct snd_soc_dai_driver mtk_6358_dai_codecs[] = {
 	 .capture = {
 		     .stream_name = MT_SOC_UL1DATA2_STREAM_NAME,
 		     .channels_min = 1,
-		     .channels_max = 2,
+		     .channels_max = 4,
 		     .rates = SNDRV_PCM_RATE_8000_192000,
 		     .formats = SND_SOC_ADV_MT_FMTS,
 		     },

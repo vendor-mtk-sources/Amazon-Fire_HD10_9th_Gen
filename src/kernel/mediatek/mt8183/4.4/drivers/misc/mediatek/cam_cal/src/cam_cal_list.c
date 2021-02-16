@@ -74,8 +74,11 @@ struct stCAM_CAL_LIST_STRUCT g_camCalList[] = {
 /*Below is commom sensor */
 #if defined(CONFIG_CAM_OTP_DATA_USE_IDME)
 	{HI556_SENSOR_ID, 0xA0, CMD_AUTO, cam_cal_check_mtk_cid, cam_cal_rear_read_region},
+	{HI556SEC_SENSOR_ID, 0xA0, CMD_AUTO, cam_cal_check_mtk_cid, cam_cal_rear_read_region},
 	{OV02B_SENSOR_ID, 0xA8, CMD_AUTO, cam_cal_check_mtk_cid, cam_cal_front_read_region},
+	{OV02BSEC_SENSOR_ID, 0xA8, CMD_AUTO, cam_cal_check_mtk_cid, cam_cal_front_read_region},
 	{GC5035_SENSOR_ID, 0xA0, CMD_AUTO, cam_cal_check_mtk_cid, cam_cal_rear_read_region},
+	{GC5035SEC_SENSOR_ID, 0xA0, CMD_AUTO, cam_cal_check_mtk_cid, cam_cal_rear_read_region},
 	{GC02M1TR_SENSOR_ID, 0xA8, CMD_AUTO, cam_cal_check_mtk_cid, cam_cal_front_read_region},
 	{GC02M1TRSEC_SENSOR_ID, 0xA8, CMD_AUTO, cam_cal_check_mtk_cid, cam_cal_front_read_region},
 #endif

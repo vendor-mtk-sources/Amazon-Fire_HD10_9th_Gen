@@ -260,6 +260,7 @@ typedef struct _DEV_WMT_ {
 	struct work_struct wmtd_worker_thread_work;
 	struct osal_op_history wmtd_op_history;
 	struct osal_op_history worker_op_history;
+	OSAL_WAKE_LOCK rst_wake_lock;
 	UINT8 msg_local_buffer[WMT_IDC_MSG_BUFFER];
 } DEV_WMT, *P_DEV_WMT;
 
@@ -394,7 +395,7 @@ extern INT32 wmt_lib_merge_if_flag_ctrl(UINT32 enable);
 extern INT32 wmt_lib_merge_if_flag_get(UINT32 enable);
 
 extern PUINT8 wmt_lib_get_cpupcr_xml_format(PUINT32 len);
-extern UINT32 wmt_lib_set_host_assert_info(UINT32 type, UINT32 reason, UINT32 en);
+extern UINT32 wmt_lib_set_host_assert_info(UINT32 type, UINT32 reason, UINT32 en, PUINT8 keyword);
 extern INT8 wmt_lib_co_clock_get(VOID);
 extern UINT32 wmt_lib_soc_set_wifiver(UINT32 wifiver);
 extern VOID wmt_lib_dump_wmtd_backtrace(VOID);

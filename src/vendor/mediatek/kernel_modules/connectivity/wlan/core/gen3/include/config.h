@@ -742,7 +742,7 @@
 #define CFG_SUPPORT_P2P_RSSI_QUERY        0
 
 #define CFG_SHOW_MACADDR_SOURCE     1
-#define CFG_SUPPORT_VO_ENTERPRISE               1
+#define CFG_SUPPORT_VO_ENTERPRISE               0
 #define CFG_SUPPORT_WMM_AC                      1
 #if CFG_SUPPORT_VO_ENTERPRISE
 #define CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT  1
@@ -916,7 +916,8 @@
 #else
 #define CFG_SUPPORT_SCAN_RANDOM_MAC     0
 #endif
-
+#define CFG_SUPPORT_BA_OFFLOAD 1
+#define CFG_SUPPORT_RX_AMSDU 0
 /*------------------------------------------------------------------------------
  * Flags of WoW statistics SUPPORT
  *------------------------------------------------------------------------------
@@ -925,6 +926,23 @@
 #define CFG_SUPPORT_EXCEPTION_STATISTICS    1
 #define CFG_DEBUG_TX_STATISTIC_STATUS       0
 
+#ifdef ENABLED_IN_ENGUSERDEBUG
+enum UT_TRIGGER_CHIP_RESET {
+	TRIGGER_RESET_START,
+	TRIGGER_RESET_LP_OWN_FAILED,
+	TRIGGER_RESET_RX_STATUS_GROUP3_WRONG,
+	TRIGGER_RESET_PKT_ERROR_MAX,
+	TRIGGER_RESET_RX_PKTNUM_OVERSIZE,
+	TRIGGER_RESET_RX_STATUS_GROUP4_NULL,
+	TRIGGER_RESET_SCAN_TIMEOUT,
+	TRIGGER_RESET_RESOURCE_POLL_TIMEOUT,
+	TRIGGER_RESET_BUS_ACCESS_FAILED,
+	TRIGGER_RESET_END,
+};
+#endif
+
+#define CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS 1 /*fos_change online*/
+#define CFG_SUPPORT_WLAN_CUSTOMIZE_WMM 1 /*fos_change*/
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************

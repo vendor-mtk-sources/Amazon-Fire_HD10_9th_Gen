@@ -811,6 +811,31 @@ typedef struct _EVENT_PACKET_DROP_BY_FW_T {
 #define QM_GET_DROP_BY_FW_SSN(_u2SSN) \
 	((UINT_16) (_u2SSN >>= 4))
 #endif
+
+#if CFG_SUPPORT_BA_OFFLOAD
+enum ENUM_BAOFFLOAD_INDICATE_TYPE
+{
+	BAOFFLOAD_INDICATE_BAR = 0,
+	BAOFFLOAD_INDICATE_ADDBA,
+	BAOFFLOAD_INDICATE_DELBA,
+	BAOFFLOAD_INDICATE_NUM
+};
+
+struct BAOFFLOAD_INDICATE_INFO
+{
+	enum ENUM_BAOFFLOAD_INDICATE_TYPE eBaOffloadIndicateType;
+	uint32_t u4WinSize;
+	uint32_t ucTid;
+	uint16_t u4SSN;
+	uint8_t ucStaRecIdx;
+};
+
+struct EVENT_BAOFFLOAD_INDICATE
+{
+	struct BAOFFLOAD_INDICATE_INFO sBaOffloadIndicateInfo[CFG_RX_MAX_BA_TID_NUM];
+	uint8_t ucEventCnt;
+};
+#endif
 /*******************************************************************************
  *                   F U N C T I O N   D E C L A R A T I O N S
  ********************************************************************************
@@ -1026,6 +1051,10 @@ VOID qmHandleDelTspec(P_ADAPTER_T prAdapter, P_STA_RECORD_T prStaRec, ENUM_ACI_T
  *                              F U N C T I O N S
  ********************************************************************************
  */
+#if CFG_SUPPORT_BA_OFFLOAD
+void qmHandleEventBaOffloadIndication(IN P_ADAPTER_T prAdapter,
+			IN P_WIFI_EVENT_T prEvent);
+#endif
 
 #if QM_TEST_MODE
 extern QUE_MGT_T g_rQM;

@@ -44,9 +44,14 @@
 #define CTIA_MAGIC_SSID                     "no_use_ctia_ssid"	/* "ctia_test_only_*#*#3646633#*#*" */
 #define CTIA_MAGIC_SSID_LEN                 16
 
+
 #define AIS_FSM_STATE_SEARCH_ACTION_PHASE_0	0
 #define AIS_FSM_STATE_SEARCH_ACTION_PHASE_1	1
 #define AIS_FSM_STATE_SEARCH_ACTION_PHASE_2	2
+
+#if CFG_SUPPORT_ANT_DIVERSITY
+struct AIS_ANT_SWITCH_STATISTIC_T rAisAntSwitchStatistic;
+#endif
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -283,6 +288,7 @@ VOID aisFsmInit(IN P_ADAPTER_T prAdapter)
 	AisFsmSetScanState(prAdapter, FALSE);
 #endif
 
+
 	/* 4 <1.1> Initiate FSM - Timer INIT */
 	cnmTimerInitTimer(prAdapter,
 			  &prAisFsmInfo->rBGScanTimer,
@@ -435,6 +441,36 @@ VOID aisFsmUninit(IN P_ADAPTER_T prAdapter)
 	LINK_MGMT_UNINIT(&prAisFsmInfo->rBcnTimeout, struct AIS_BEACON_TIMEOUT_BSS, VIR_MEM_TYPE);
 	LINK_MGMT_UNINIT(&prAisSpecificBssInfo->rNeighborApList, struct NEIGHBOR_AP_T, VIR_MEM_TYPE);
 }				/* end of aisFsmUninit() */
+/*----------------------------------------------------------------------------*/
+/*!
+* @brief Reset the cuBssinfo
+*
+* @param[in] prAdapter
+*
+* @return (none)
+*/
+/*----------------------------------------------------------------------------*/
+
+VOID aisFsmResetCuBssInfo(IN P_ADAPTER_T prAdapter)
+{
+	ASSERT(prAdapter);
+	DEBUGFUNC("aisFsmResetCuBssInfo()");
+	prAdapter->rBssInfoForSavingFwBSSParam.eBand = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucPrimaryChannel = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.eBssSCO = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.fgErpProtectMode = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.eHtProtectMode = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.eGfOperationMode = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.eRifsOperationMode = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.u2HtOpInfo2 = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.u2HtOpInfo3 = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucHtOpInfo1 = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.fgUseShortPreamble = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelWidth = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelFrequencyS1 = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelFrequencyS2 = 0;
+	prAdapter->rBssInfoForSavingFwBSSParam.u2BSSBasicRateSet = 0;
+}
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -471,6 +507,7 @@ VOID aisFsmStateInit_JOIN(IN P_ADAPTER_T prAdapter, P_BSS_DESC_T prBssDesc)
 					      STA_TYPE_LEGACY_AP, prAdapter->prAisBssInfo->ucBssIndex, prBssDesc);
 
 	prAisFsmInfo->prTargetStaRec = prStaRec;
+	aisFsmResetCuBssInfo(prAdapter);
 
 	/* 4 <2.1> sync. to firmware domain */
 	if (prStaRec->ucStaState == STA_STATE_1)
@@ -5941,7 +5978,7 @@ VOID aisFsmAntSwitchSteps(P_ADAPTER_T prAdapter,
 	BOOLEAN fgIsTransition = FALSE;
 
 	prASInfo = &prAdapter->rWifiVar.rAisAntSwitchInfo;
-	prASData = &prAdapter->rWifiVar.rAisAntSwitchStatistic;
+	prASData = &rAisAntSwitchStatistic;
 
 	if (prASInfo->ucAntRCPIDelta == 0) {
 		prASInfo->ucAntRCPIDelta = AIS_ANT_SW_RCPI_DELTA;
@@ -6051,7 +6088,7 @@ VOID aisFsmAntSwitchQuerySwitch(P_ADAPTER_T prAdapter,
 
 	DBGLOG(AIS, INFO, "[AntS] FW switch ant to %u", ucAntNum);
 	prAntSwInfo = &prAdapter->rWifiVar.rAisAntSwitchInfo;
-	prAntSwData = &prAdapter->rWifiVar.rAisAntSwitchStatistic;
+	prAntSwData = &rAisAntSwitchStatistic;
 
 	if (prAntSwInfo->ucTestCase != ENUM_AS_TEST_QUERY_ANT_CAP &&
 			!prAdapter->prGlueInfo->fgIsEnableAntSwQuery) {
@@ -6062,7 +6099,7 @@ VOID aisFsmAntSwitchQuerySwitch(P_ADAPTER_T prAdapter,
 
 	prAntSwData->u4ASSwitchTotal++;
 	prAntSwData->u8AntSwQueryTime = kalGetTimeTick();
-	rAntSwCap.ucAntNum = ucAntNum;
+	rAntSwCap.ucAntNum = prAntSwInfo->ant_gpio_table[ucAntNum];/*convert anternna num to corresponding GPIO signal send to fw*/
 	rStatus = wlanSendSetQueryCmd(prAdapter,
 				      CMD_ID_GET_ANT_SWITCH_CAP, /* ucCID */
 				      FALSE,	/* fgSetQuery */
@@ -6089,7 +6126,7 @@ aisFsmAntSwitchQuerySwDone(IN P_ADAPTER_T prAdapter,
 
 	ASSERT(prAdapter);
 	prAntSwCap = (struct CMD_GET_ANT_SW_CAP *) pucEventBuf;
-	prAntSwData = &prAdapter->rWifiVar.rAisAntSwitchStatistic;
+	prAntSwData = &rAisAntSwitchStatistic;
 	prAntSwInfo = &prAdapter->rWifiVar.rAisAntSwitchInfo;
 
 	prAntSwData->u8AntSwQueryDoneTime = kalGetTimeTick();
@@ -6120,7 +6157,7 @@ aisFsmAntSwQrySwTimeOut(IN P_ADAPTER_T prAdapter,
 	struct AIS_ANT_SWITCH_INFO_T *prAntSwInfo = NULL;
 
 	ASSERT(prAdapter);
-	prAntSwData = &prAdapter->rWifiVar.rAisAntSwitchStatistic;
+	prAntSwData = &rAisAntSwitchStatistic;
 	prAntSwInfo = &prAdapter->rWifiVar.rAisAntSwitchInfo;
 
 	DBGLOG(AIS, ERROR, "[AntS] FW Swith ant Timeout!");
@@ -6138,12 +6175,16 @@ VOID aisFsmAntSwitchScan(P_ADAPTER_T prAdapter)
 {
 	struct _MSG_SCN_SCAN_REQ_V3_T *prScanReqMsg;
 	UINT_32 u4ScnReqMsgLen = 0;
+	struct AIS_ANT_SWITCH_INFO_T *prAntSwInfo = NULL;
+	struct AIS_ANT_SWITCH_STATISTIC_T *prAntSwData = NULL;
 
 	DBGLOG(AIS, INFO, "aisFsmAntSwitchScan->");
 	prAdapter->rWifiVar.rConnSettings.fgIsScanReqIssued = TRUE;
-	kalMemZero(prAdapter->rWifiVar.rAisAntSwitchInfo.aucAntScanRCPI,
-			sizeof(prAdapter->rWifiVar.rAisAntSwitchInfo.aucAntScanRCPI));
-	prAdapter->rWifiVar.rAisAntSwitchInfo.ucAntScanIndex = 0;
+	prAntSwInfo = &prAdapter->rWifiVar.rAisAntSwitchInfo;
+	prAntSwData = &rAisAntSwitchStatistic;
+	kalMemZero(prAntSwInfo->aucAntScanRCPI,
+			sizeof(prAntSwInfo->aucAntScanRCPI));
+	prAntSwInfo->ucAntScanIndex = 0;
 
 	u4ScnReqMsgLen = OFFSET_OF(struct _MSG_SCN_SCAN_REQ_V3_T, aucIE);
 	prScanReqMsg = (struct _MSG_SCN_SCAN_REQ_V3_T *) cnmMemAlloc(prAdapter,
@@ -6154,7 +6195,7 @@ VOID aisFsmAntSwitchScan(P_ADAPTER_T prAdapter)
 		return;
 	}
 
-	prAdapter->rWifiVar.rAisAntSwitchStatistic.u4ASScanTotal++;
+	prAntSwData->u4ASScanTotal++;
 	kalMemZero(prScanReqMsg, u4ScnReqMsgLen);
 
 	prScanReqMsg->rMsgHdr.eMsgId = MID_AIS_SCN_SCAN_REQ_V3;
@@ -6162,7 +6203,7 @@ VOID aisFsmAntSwitchScan(P_ADAPTER_T prAdapter)
 	prScanReqMsg->ucBssIndex = prAdapter->prAisBssInfo->ucBssIndex;
 
 	COPY_MAC_ADDR(prScanReqMsg->aucBSSID, prAdapter->prAisBssInfo->aucBSSID);
-	COPY_MAC_ADDR(prAdapter->rWifiVar.rAisAntSwitchInfo.aucBSSID,
+	COPY_MAC_ADDR(prAntSwInfo->aucBSSID,
 			prAdapter->prAisBssInfo->aucBSSID);
 
 	prScanReqMsg->eScanType = SCAN_TYPE_ACTIVE_SCAN;
@@ -6376,15 +6417,17 @@ VOID aisFsmAntSwDelayTimeOut(IN P_ADAPTER_T prAdapter,
 		ULONG ulParamPtr)
 {
 	struct _WIFI_VAR_T *prVar = &prAdapter->rWifiVar;
+	struct AIS_ANT_SWITCH_STATISTIC_T *prAntSwData = NULL;
+	prAntSwData = &rAisAntSwitchStatistic;
 
 	if (prVar->rAisFsmInfo.eCurrentState != AIS_STATE_NORMAL_TR) {
 		DBGLOG(AIS, INFO, "[AntS] media disconnect after delay\n");
-		prVar->rAisAntSwitchStatistic.u4ASOrientationDisconnect++;
+		prAntSwData->u4ASOrientationDisconnect++;
 		return;
 	}
 	if (prVar->rConnSettings.fgIsScanReqIssued) {
 		DBGLOG(AIS, INFO, "[AntS] during scan after delay\n");
-		prVar->rAisAntSwitchStatistic.u4ASOrientationScan++;
+		prAntSwData->u4ASOrientationScan++;
 		return;
 	}
 

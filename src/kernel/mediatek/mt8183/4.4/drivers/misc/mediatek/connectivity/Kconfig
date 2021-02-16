@@ -351,6 +351,12 @@ config SUPPORT_DFS_CHANNEL
 	help
 	  Support DFS channel
 
+config MTK_WLAN_PWR_LIMIT_COUNTRY
+	bool "MTK_WLAN_PWR_LIMIT_COUNTRY"
+	default n
+	help
+	  Support power limit setting by country
+
 config MTK_COMBO_CHIP_DEEP_SLEEP_SUPPORT
 	depends on MTK_COMBO_CHIP_MT6632
 	default y

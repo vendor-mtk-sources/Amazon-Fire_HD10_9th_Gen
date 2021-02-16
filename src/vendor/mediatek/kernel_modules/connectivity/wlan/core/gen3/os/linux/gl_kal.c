@@ -1174,9 +1174,11 @@ kalIndicateStatusAndComplete(IN P_GLUE_INFO_T prGlueInfo, IN WLAN_STATUS eStatus
 		break;
 
 	case WLAN_STATUS_MEDIA_DISCONNECT:
-	case WLAN_STATUS_MEDIA_DISCONNECT_LOCALLY:
 		/* indicate disassoc event */
-		wext_indicate_wext_event(prGlueInfo, SIOCGIWAP, NULL, 0);
+		if(prGlueInfo->eParamMediaStateIndicated != PARAM_MEDIA_STATE_DISCONNECTED_LOCALLY) {
+			wext_indicate_wext_event(prGlueInfo, SIOCGIWAP, NULL, 0);
+			netif_carrier_off(prGlueInfo->prDevHandler);
+		}
 		/*
 		 * For CR 90 and CR99, While supplicant do reassociate, driver will do netif_carrier_off first,
 		 * after associated success, at joinComplete(), do netif_carier_on,
@@ -1189,7 +1191,6 @@ kalIndicateStatusAndComplete(IN P_GLUE_INFO_T prGlueInfo, IN WLAN_STATUS eStatus
 		DBGLOG(INIT, INFO, "[wifi] %s netif_carrier_off\n", prGlueInfo->prDevHandler->name);
 #endif
 
-		netif_carrier_off(prGlueInfo->prDevHandler);
 #if CFG_SUPPORT_WIFI_POWER_DEBUG
 		if (prGlueInfo->eParamMediaStateIndicated != PARAM_MEDIA_STATE_DISCONNECTED) {
 			if (glIsDataStatEnabled()) {
@@ -1231,6 +1232,23 @@ kalIndicateStatusAndComplete(IN P_GLUE_INFO_T prGlueInfo, IN WLAN_STATUS eStatus
 		kalMemZero(&prGlueInfo->rFtIeForTx, sizeof(prGlueInfo->rFtIeForTx));
 
 		prGlueInfo->eParamMediaStateIndicated = PARAM_MEDIA_STATE_DISCONNECTED;
+
+		break;
+
+	case WLAN_STATUS_MEDIA_DISCONNECT_LOCALLY:
+		/* indicate disassoc event */
+		wext_indicate_wext_event(prGlueInfo, SIOCGIWAP, NULL, 0);
+		/* For CR 90 and CR99, While supplicant do reassociate, driver will do netif_carrier_off first,
+		   after associated success, at joinComplete(), do netif_carier_on,
+		   but for unknown reason, the supplicant 1x pkt will not called the driver
+		   hardStartXmit, for template workaround these bugs, add this compiling flag
+		 */
+		/* switch netif off */
+
+		DBGLOG(AIS, INFO, "[wifi] %s netif_carrier_off locally\n",
+				    prGlueInfo->prDevHandler->name);
+
+		netif_carrier_off(prGlueInfo->prDevHandler);
 
 		break;
 
@@ -5641,6 +5659,58 @@ VOID kalScheduleCommonWork(struct DRV_COMMON_WORK_T *prDrvWork, struct DRV_COMMO
 	spin_unlock_irqrestore(&prDrvWork->rWorkFuncQueLock, ulFlags);
 	schedule_work(&prDrvWork->rWork);
 }
+
+#if CFG_SUPPORT_DFS
+void kalIndicateChannelSwitch(IN GLUE_INFO_T *prGlueInfo,
+				IN ENUM_CHNL_EXT_T eSco,
+				IN uint8_t ucChannelNum)
+{
+	struct cfg80211_chan_def chandef;
+	struct ieee80211_channel *prChannel = NULL;
+	enum nl80211_channel_type rChannelType;
+
+	if (ucChannelNum <= 14) {
+		prChannel =
+		    ieee80211_get_channel(priv_to_wiphy(prGlueInfo),
+			ieee80211_channel_to_frequency(ucChannelNum,
+			KAL_BAND_2GHZ));
+	} else {
+		prChannel =
+		    ieee80211_get_channel(priv_to_wiphy(prGlueInfo),
+			ieee80211_channel_to_frequency(ucChannelNum,
+			KAL_BAND_5GHZ));
+	}
+
+	if (!prChannel) {
+		DBGLOG(REQ, ERROR, "ieee80211_get_channel fail!\n");
+		return;
+	}
+
+	switch (eSco) {
+	case CHNL_EXT_SCN:
+		rChannelType = NL80211_CHAN_NO_HT;
+		break;
+
+	case CHNL_EXT_SCA:
+		rChannelType = NL80211_CHAN_HT40MINUS;
+		break;
+
+	case CHNL_EXT_SCB:
+		rChannelType = NL80211_CHAN_HT40PLUS;
+		break;
+
+	case CHNL_EXT_RES:
+	default:
+		rChannelType = NL80211_CHAN_HT20;
+		break;
+	}
+
+	DBGLOG(REQ, STATE, "DFS channel switch to %d\n", ucChannelNum);
+
+	cfg80211_chandef_create(&chandef, prChannel, rChannelType);
+	cfg80211_ch_switch_notify(prGlueInfo->prDevHandler, &chandef);
+}
+#endif
 
 #if CFG_SUPPORT_WIFI_POWER_DEBUG
 static UINT_16 kalGetEthType(struct sk_buff *prSkb)

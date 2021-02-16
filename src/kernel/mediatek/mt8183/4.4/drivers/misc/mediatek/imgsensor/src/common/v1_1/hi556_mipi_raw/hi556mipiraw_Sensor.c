@@ -44,18 +44,17 @@ static struct imgsensor_info_struct imgsensor_info = {
 	.sensor_id = HI556_SENSOR_ID,
 	.checksum_value = 0x55e2a82f,
 	.pre = {
-		.pclk = 176000000,		/* record different mode's pclk */
-		.linelength = 2816,		/* record different mode's linelength */
-		.framelength = 2083,		/* record different mode's framelength */
-		.startx = 0,			/* record different mode's startx of grabwindow */
-		.starty = 0,			/* record different mode's starty of grabwindow */
-		.grabwindow_width = 1296,	/* record different mode's width of grabwindow */
-		.grabwindow_height = 972,	/* record different mode's height of grabwindow */
-		/* following for MIPIDataLowPwr2HighSpeedSettleDelayCount by different scenario */
+		.pclk = 176000000,
+		.linelength = 2816,
+		.framelength = 2083,
+		.startx = 0,
+		.starty = 0,
+		.grabwindow_width = 2592,
+		.grabwindow_height = 1944,
 		.mipi_data_lp2hs_settle_dc = 85,
 		/* following for GetDefaultFramerateByScenario() */
 		.max_framerate = 300,
-		.mipi_pixel_rate = 88000000, /* 440Mx2/10 */
+		.mipi_pixel_rate = 176000000,
 	},
 	.cap = {
 		.pclk = 176000000,
@@ -171,7 +170,7 @@ static struct imgsensor_struct imgsensor = {
 
 /* Sensor output window information */
 static SENSOR_WINSIZE_INFO_STRUCT imgsensor_winsize_info[5] = {
-	{ 2592, 1944, 0, 0, 2592, 1944, 1296, 972, 0, 0, 1296, 972, 0, 0, 1296, 972},       /* preview */
+	{ 2592, 1944, 0, 0, 2592, 1944, 2592, 1944, 0, 0, 2592, 1944, 0, 0, 2592, 1944},    /* preview */
 	{ 2592, 1944, 0, 0, 2592, 1944, 2592, 1944, 0, 0, 2592, 1944, 0, 0, 2592, 1944},    /* capture */
 	{ 2592, 1944, 0, 0, 2592, 1944, 2592, 1944, 0, 0, 2592, 1944, 0, 0, 2592, 1944},    /* video */
 	{ 2592, 1944, 16, 12, 2560, 1920, 640, 480, 0, 0, 640, 480, 0, 0, 640, 480},        /* high speed video */
@@ -1835,48 +1834,48 @@ static void sensor_init(void)
 #if MULTI_WRITE
 kal_uint16 addr_data_pair_preview_hi556[] = {
 	/* 0x0a00, 0x0000, */	/* stream off */
-	0x0b0a, 0x8259,
+	0x0b0a, 0x8252,
 	0x0f30, 0x6e25,
-	0x0f32, 0x7167,
+	0x0f32, 0x7067,
 	0x004a, 0x0100,
 	0x004c, 0x0000,
-	0x000c, 0x0122,
+	0x000c, 0x0022,
 	0x0008, 0x0b00,
-	0x005a, 0x0404,
-	0x0012, 0x000c,
-	0x0018, 0x0a33,
+	0x005a, 0x0202,
+	0x0012, 0x000e,
+	0x0018, 0x0a31,
 	0x0022, 0x0008,
 	0x0028, 0x0017,
-	0x0024, 0x0022,
-	0x002a, 0x002b,
+	0x0024, 0x0028,
+	0x002a, 0x002d,
 	0x0026, 0x0030,
 	0x002c, 0x07c7,
-	0x002e, 0x3311,
-	0x0030, 0x3311,
-	0x0032, 0x3311,
+	0x002e, 0x1111,
+	0x0030, 0x1111,
+	0x0032, 0x1111,
 	0x0006, 0x0823,
-	0x0116, 0x03e6,
+	0x0116, 0x07b6,
 	0x0a22, 0x0000,
-	0x0a12, 0x0510,
-	0x0a14, 0x03cc,
+	0x0a12, 0x0a20,
+	0x0a14, 0x0798,
 	0x003e, 0x0000,
-	0x0074, 0x07d3,
-	0x0070, 0x03e9,
+	0x0074, 0x0821,
+	0x0070, 0x0411,
 	0x0804, 0x0200,
-	0x0a04, 0x016a,
-	0x090c, 0x09c0,
-	0x090e, 0x0010,
+	0x0a04, 0x014a,
+	0x090c, 0x0fdc,
+	0x090e, 0x002d,
 	0x0040, 0x0000,
 	0x0042, 0x0100,
 	0x003e, 0x0000,
 	0x0126, 0x00f9,
 	0x0902, 0x4319,
-	0x0914, 0xc106,
-	0x0916, 0x040e,
-	0x0918, 0x0304,
-	0x091a, 0x0709,
-	0x091c, 0x0e06,
-	0x091e, 0x0300,
+	0x0914, 0xc10a,
+	0x0916, 0x071f,
+	0x0918, 0x0408,
+	0x091a, 0x0c0d,
+	0x091c, 0x0f09,
+	0x091e, 0x0a00,
 	0x0958, 0xbb80,
 };
 #endif
@@ -1889,47 +1888,49 @@ static void preview_setting(void)
 		sizeof(addr_data_pair_preview_hi556) /
 		sizeof(kal_uint16));
 #else
-	write_cmos_sensor(0x0b0a, 0x8259);
+	/* write_cmos_sensor(0x0a00, 0x0000); */	/* stream off */
+	write_cmos_sensor(0x0b0a, 0x8252);
 	write_cmos_sensor(0x0f30, 0x6e25);
-	write_cmos_sensor(0x0f32, 0x7167);
+	write_cmos_sensor(0x0f32, 0x7067);
 	write_cmos_sensor(0x004a, 0x0100);
 	write_cmos_sensor(0x004c, 0x0000);
 	write_cmos_sensor(0x004e, 0x0100);	/* perframe enable */
-	write_cmos_sensor(0x000c, 0x0122);
+	write_cmos_sensor(0x000c, 0x0022);
 	write_cmos_sensor(0x0008, 0x0b00);
-	write_cmos_sensor(0x005a, 0x0404);
-	write_cmos_sensor(0x0012, 0x000c);
-	write_cmos_sensor(0x0018, 0x0a33);
+	write_cmos_sensor(0x005a, 0x0202);
+	write_cmos_sensor(0x0012, 0x000e);
+	write_cmos_sensor(0x0018, 0x0a31);
 	write_cmos_sensor(0x0022, 0x0008);
 	write_cmos_sensor(0x0028, 0x0017);
-	write_cmos_sensor(0x0024, 0x0022);
-	write_cmos_sensor(0x002a, 0x002b);
+	write_cmos_sensor(0x0024, 0x0028);
+	write_cmos_sensor(0x002a, 0x002d);
 	write_cmos_sensor(0x0026, 0x0030);
 	write_cmos_sensor(0x002c, 0x07c7);
-	write_cmos_sensor(0x002e, 0x3311);
-	write_cmos_sensor(0x0030, 0x3311);
-	write_cmos_sensor(0x0032, 0x3311);
+	write_cmos_sensor(0x002e, 0x1111);
+	write_cmos_sensor(0x0030, 0x1111);
+	write_cmos_sensor(0x0032, 0x1111);
+	/* write_cmos_sensor(0x0006, 0x0801); */
 	write_cmos_sensor(0x0006, 0x0823);
 	write_cmos_sensor(0x0a22, 0x0000);
-	write_cmos_sensor(0x0a12, 0x0510);
-	write_cmos_sensor(0x0a14, 0x03cc);
+	write_cmos_sensor(0x0a12, 0x0a20);
+	write_cmos_sensor(0x0a14, 0x0798);
 	write_cmos_sensor(0x003e, 0x0000);
 	/* write_cmos_sensor(0x0074, 0x07ff); */
 	/* write_cmos_sensor(0x0070, 0x0411); */
-	write_cmos_sensor(0x0804, 0x0208);
-	write_cmos_sensor(0x0a04, 0x016a);
-	write_cmos_sensor(0x090e, 0x0010);
-	write_cmos_sensor(0x090c, 0x09c0);
+	write_cmos_sensor(0x0804, 0x0200);
+	write_cmos_sensor(0x0a04, 0x014a);
+	write_cmos_sensor(0x090c, 0x0fdc);
+	write_cmos_sensor(0x090e, 0x002d);
 	/* =============================================== *
-	 *             mipi 2 lane 440Mbps                 *
+	 *             mipi 2 lane 880Mbps                 *
 	 * =============================================== */
 	write_cmos_sensor(0x0902, 0x4319);
-	write_cmos_sensor(0x0914, 0xc106);
-	write_cmos_sensor(0x0916, 0x040e);
-	write_cmos_sensor(0x0918, 0x0304);
-	write_cmos_sensor(0x091a, 0x0708);
-	write_cmos_sensor(0x091c, 0x0e06);
-	write_cmos_sensor(0x091e, 0x0300);
+	write_cmos_sensor(0x0914, 0xc10a);
+	write_cmos_sensor(0x0916, 0x071f);
+	write_cmos_sensor(0x0918, 0x0408);
+	write_cmos_sensor(0x091a, 0x0c0d);
+	write_cmos_sensor(0x091c, 0x0f09);
+	write_cmos_sensor(0x091e, 0x0a00);
 #endif
 }
 

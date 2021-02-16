@@ -288,7 +288,7 @@ struct CHANNEL_SWITCH_ANNOUNCE_PARAMS {
 VOID rlmFsmEventInit(P_ADAPTER_T prAdapter);
 
 VOID rlmFsmEventUninit(P_ADAPTER_T prAdapter);
-
+void rlmReqGenerateSupportedChIE(P_ADAPTER_T prAdapter, P_MSDU_INFO_T prMsduInfo);
 VOID rlmReqGenerateHtCapIE(P_ADAPTER_T prAdapter, P_MSDU_INFO_T prMsduInfo);
 
 VOID rlmReqGenerateExtCapIE(P_ADAPTER_T prAdapter, P_MSDU_INFO_T prMsduInfo);

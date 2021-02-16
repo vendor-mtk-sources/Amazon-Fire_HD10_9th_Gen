@@ -346,6 +346,7 @@ struct AIS_ANT_SWITCH_INFO_T {
 	UINT_8 aucBSSID[MAC_ADDR_LEN];
 	TIMER_T rSwapTimer;
 	PUINT_32 ant_placement_table;
+	PUINT_32 ant_gpio_table; /*record the high or low level of the gpio for fos7*/
 };
 
 struct AIS_ANT_SWITCH_STATISTIC_T {

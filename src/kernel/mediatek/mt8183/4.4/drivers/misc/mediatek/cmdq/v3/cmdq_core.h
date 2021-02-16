@@ -56,6 +56,7 @@ else							\
 
 #define CMDQ_LONGSTRING_MAX (180)
 #define CMDQ_DELAY_RELEASE_RESOURCE_MS (1000)
+#define CMDQ_MAX_DUMP_REG_COUNT (2048)
 
 #define CMDQ_THREAD_SEC_PRIMARY_DISP	(CMDQ_MIN_SECURE_THREAD_ID)
 #define CMDQ_THREAD_SEC_SUB_DISP	(CMDQ_MIN_SECURE_THREAD_ID + 1)
@@ -505,6 +506,7 @@ struct TaskStruct {
 	uint32_t *pCMDEnd;
 	void *user_private;
 	int32_t reorder;
+	bool force_inorder;
 	int32_t thread;		/* ASYNC: CMDQ_INVALID_THREAD if not running */
 	int32_t exclusive_thread;	/* task must use specific thread */
 	int32_t irqFlag;	/* ASYNC: flag of IRQ received */

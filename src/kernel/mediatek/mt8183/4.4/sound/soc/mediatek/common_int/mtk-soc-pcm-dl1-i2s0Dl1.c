@@ -62,13 +62,16 @@
 #include "mtk-soc-afe-control.h"
 #include "mtk-soc-pcm-platform.h"
 
+#define DEFAULT_PLAYBACK_STATE 0
 
 static struct afe_mem_control_t *pI2S0dl1MemControl;
 static struct snd_dma_buffer Dl1I2S0_Playback_dma_buf;
 static unsigned int mPlaybackDramState;
-
 static bool vcore_dvfs_enable;
 
+struct mt_pcm_i2s0Dl1_priv {
+	int playback_state;
+};
 
 /*
  *    function implementation
@@ -155,11 +158,37 @@ static int Audio_Irqcnt1_Set(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_
 	return 0;
 }
 
+static int Audio_I2S0dl1_playback_status_Set(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct mt_pcm_i2s0Dl1_priv *priv = dev_get_drvdata(mDev);
+
+	priv->playback_state = ucontrol->value.integer.value[0];
+	pr_debug("Audio_I2S0dl1_playback_status_Set = %d\n",
+		priv->playback_state);
+	return 0;
+}
+
+static int Audio_I2S0dl1_playback_status_Get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct mt_pcm_i2s0Dl1_priv *priv = dev_get_drvdata(mDev);
+
+	ucontrol->value.integer.value[0] = priv->playback_state;
+	pr_debug("Audio_I2S0dl1_playback_status_Get = %d\n",
+			priv->playback_state);
+	return 0;
+}
+
 static const struct snd_kcontrol_new Audio_snd_I2S0dl1_controls[] = {
 	SOC_ENUM_EXT("Audio_I2S0dl1_hd_Switch", Audio_I2S0dl1_Enum[0],
 		Audio_I2S0dl1_hdoutput_Get, Audio_I2S0dl1_hdoutput_Set),
 	SOC_SINGLE_EXT("Audio IRQ1 CNT", SND_SOC_NOPM, 0, IRQ_MAX_RATE, 0,
-		       Audio_Irqcnt1_Get, Audio_Irqcnt1_Set),
+		Audio_Irqcnt1_Get, Audio_Irqcnt1_Set),
+	SOC_SINGLE_BOOL_EXT("Audio_I2S0dl1_playback_state",
+		DEFAULT_PLAYBACK_STATE,
+		Audio_I2S0dl1_playback_status_Get,
+		Audio_I2S0dl1_playback_status_Set)
 };
 
 static struct snd_pcm_hardware mtk_I2S0dl1_hardware = {
@@ -182,7 +211,7 @@ static struct snd_pcm_hardware mtk_I2S0dl1_hardware = {
 static int mtk_pcm_I2S0dl1_stop(struct snd_pcm_substream *substream)
 {
 	/* struct afe_block_t *Afe_Block = &(pI2S0dl1MemControl->rBlock); */
-
+	struct mt_pcm_i2s0Dl1_priv *priv = dev_get_drvdata(mDev);
 	pr_warn("%s\n", __func__);
 
 	irq_user_id = NULL;
@@ -191,6 +220,8 @@ static int mtk_pcm_I2S0dl1_stop(struct snd_pcm_substream *substream)
 	SetMemoryPathEnable(Soc_Aud_Digital_Block_MEM_DL1, false);
 
 	ClearMemBlock(Soc_Aud_Digital_Block_MEM_DL1);
+
+	priv->playback_state = false; /* playback state to false when stopped */
 
 	return 0;
 }
@@ -289,6 +320,7 @@ static int mtk_pcm_I2S0dl1_open(struct snd_pcm_substream *substream)
 
 static int mtk_pcm_I2S0dl1_close(struct snd_pcm_substream *substream)
 {
+	struct mt_pcm_i2s0Dl1_priv *priv = dev_get_drvdata(mDev);
 	pr_warn("%s\n", __func__);
 
 	if (is_irq_from_ext_module()) {
@@ -339,7 +371,7 @@ static int mtk_pcm_I2S0dl1_close(struct snd_pcm_substream *substream)
 	AudDrv_Clk_Off();
 
 	vcore_dvfs(&vcore_dvfs_enable, true);
-
+	priv->playback_state = false; /* playback state to false when closed */
 	return 0;
 }
 
@@ -438,7 +470,7 @@ static int mtk_pcm_I2S0dl1_prepare(struct snd_pcm_substream *substream)
 static int mtk_pcm_I2S0dl1_start(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
-
+	struct mt_pcm_i2s0Dl1_priv *priv = dev_get_drvdata(mDev);
 	pr_warn("%s\n", __func__);
 
 	/* here to set interrupt */
@@ -453,7 +485,8 @@ static int mtk_pcm_I2S0dl1_start(struct snd_pcm_substream *substream)
 	SetMemoryPathEnable(Soc_Aud_Digital_Block_MEM_DL1, true);
 
 	EnableAfe(true);
-
+	/* set playback true when started playing */
+	priv->playback_state = true;
 	return 0;
 }
 
@@ -519,14 +552,27 @@ static struct snd_soc_platform_driver mtk_I2S0dl1_soc_platform = {
 
 static int mtk_I2S0dl1_probe(struct platform_device *pdev)
 {
+	struct mt_pcm_i2s0Dl1_priv *priv;
 	pr_debug("%s\n", __func__);
 
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(64);
+
 	if (!pdev->dev.dma_mask)
 		pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
 
 	if (pdev->dev.of_node)
 		dev_set_name(&pdev->dev, "%s", MT_SOC_I2S0DL1_PCM);
+
+	priv = devm_kzalloc(&pdev->dev, sizeof(struct mt_pcm_i2s0Dl1_priv),
+						GFP_KERNEL);
+	if (unlikely(!priv)) {
+		pr_err("%s failed to allocate private data\n", __func__);
+		return -ENOMEM;
+	}
+
+	priv->playback_state = DEFAULT_PLAYBACK_STATE;
+
+	dev_set_drvdata(&pdev->dev, priv);
 
 	pr_warn("%s: dev name %s\n", __func__, dev_name(&pdev->dev));
 

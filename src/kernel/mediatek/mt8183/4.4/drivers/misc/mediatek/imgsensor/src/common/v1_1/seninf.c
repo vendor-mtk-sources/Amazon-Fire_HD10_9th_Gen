@@ -196,7 +196,7 @@ static long seninf_ioctl(struct file *pfile, unsigned int cmd, unsigned long arg
 #endif
 
 	if (_IOC_DIR(cmd) != _IOC_NONE) {
-		pbuff = kmalloc(_IOC_SIZE(cmd), GFP_KERNEL);
+		pbuff = kzalloc(_IOC_SIZE(cmd), GFP_KERNEL);
 		if (pbuff == NULL) {
 			PK_DBG("ioctl allocate mem failed\n");
 			ret = -ENOMEM;

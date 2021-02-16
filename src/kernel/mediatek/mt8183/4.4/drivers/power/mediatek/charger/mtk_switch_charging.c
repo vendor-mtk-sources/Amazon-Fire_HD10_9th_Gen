@@ -129,6 +129,8 @@ static int adapter_power_detection_by_ocp(struct charger_manager *info)
 			(mivr_uv > 0)?mivr_uv:bak_mivr);
 	if (mivr_uv > 0)
 		charger_dev_set_mivr(info->chg1_dev, mivr_uv);
+	charger_dev_enable_input_current_limit_calibration(info->chg1_dev,
+		false);
 	charger_dev_set_constant_voltage(info->chg1_dev, cv_uv);
 	charger_dev_set_input_current(info->chg1_dev, iusb_ua);
 	charger_dev_set_charging_current(info->chg1_dev, ichg_ua);
@@ -145,6 +147,8 @@ static int adapter_power_detection_by_ocp(struct charger_manager *info)
 	pr_info("%s: restore IUSB[%d] ICHG[%d] CV[%d] MIVR[%d]\n",
 			__func__, _uA_to_mA(bak_iusb_ua),
 			_uA_to_mA(bak_ichg_ua), bak_cv_uv, bak_mivr);
+	charger_dev_enable_input_current_limit_calibration(info->chg1_dev,
+		true);
 	charger_dev_set_constant_voltage(info->chg1_dev, bak_cv_uv);
 	charger_dev_set_input_current(info->chg1_dev, bak_iusb_ua);
 	charger_dev_set_charging_current(info->chg1_dev, bak_ichg_ua);
@@ -162,6 +166,13 @@ static int adapter_power_detection(struct charger_manager *info)
 	static const char * const category_text[] = {
 		"5W", "7.5W", "9W", "12W", "15W"
 	};
+	bool wpc_online = false;
+
+	wireless_charger_dev_get_online(get_charger_by_name("wireless_chg"),
+		&wpc_online);
+
+	if (wpc_online)
+		return 0;
 
 	if (!det->en)
 		return 0;
@@ -237,9 +248,6 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 	u32 ichg1_min = 0, aicr1_min = 0;
 	int ret;
 	bool wpc_online = false;
-	struct power_supply *psy;
-	union power_supply_propval wpc_vout;
-	int iusb_ua = 0;
 
 	wireless_charger_dev_get_online(get_charger_by_name("wireless_chg"),
 		&wpc_online);
@@ -350,6 +358,9 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 	} else if (info->chr_type == APPLE_2_1A_CHARGER) {
 		pdata->input_current_limit = info->data.apple_2_1a_charger_current;
 		pdata->charging_current_limit = info->data.apple_2_1a_charger_current;
+	} else if (info->chr_type == WIRELESS_CHARGER_DEFAULT) {
+		pdata->input_current_limit = 500000; /* 500mA */
+		pdata->charging_current_limit = info->data.wpc_5w_charger_current;
 	} else if (info->chr_type == WIRELESS_CHARGER_5W) {
 		pdata->input_current_limit = info->data.wpc_5w_charger_input_current;
 		pdata->charging_current_limit = info->data.wpc_5w_charger_current;
@@ -359,6 +370,15 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 	} else if (info->chr_type == WIRELESS_CHARGER_15W) {
 		pdata->input_current_limit = info->data.wpc_15w_charger_input_current;
 		pdata->charging_current_limit = info->data.wpc_15w_charger_current;
+	}
+
+	/* for throttle wireless charging power */
+	if (wpc_online && (pdata->wireless_input_current_limit != -1)) {
+		if (pdata->wireless_input_current_limit <
+				pdata->input_current_limit) {
+			pdata->input_current_limit =
+				pdata->wireless_input_current_limit;
+		}
 	}
 
 	if (info->enable_sw_jeita) {
@@ -372,14 +392,37 @@ static void swchg_select_charging_current_limit(struct charger_manager *info)
 		}
 	}
 
-	if (pdata->thermal_input_power_limit != -1) {
+	if (pdata->thermal_input_power_limit != -1 &&
+		wpc_online) {
+		struct power_supply *psy;
+		int input_power_limit =
+				pdata->thermal_input_power_limit;
+		int iusb_ua = 0;
+		union power_supply_propval wpc_vout;
+		enum charger_type chr_type = info->chr_type;
+		const int max_input_power_bpp_mw = 5000;
+		const int max_input_power_epp_mw = 10000;
+		const int max_input_power_bpp_plus_mw = 15000;
+
+		if (chr_type == WIRELESS_CHARGER_15W)
+			input_power_limit = min(input_power_limit,
+				max_input_power_bpp_plus_mw);
+		else if (chr_type == WIRELESS_CHARGER_10W)
+			input_power_limit = min(input_power_limit,
+				max_input_power_epp_mw);
+		else
+			input_power_limit = min(input_power_limit,
+				max_input_power_bpp_mw);
+
 		psy = power_supply_get_by_name("Wireless");
 		if (psy != NULL) {
-			power_supply_get_property(psy,
+			ret = power_supply_get_property(psy,
 				POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN, &wpc_vout);
-			iusb_ua = pdata->thermal_input_power_limit * 1000 / (wpc_vout.intval/1000);
-			if (iusb_ua < pdata->input_current_limit)
-				pdata->input_current_limit = iusb_ua;
+			if (!ret) {
+				iusb_ua = input_power_limit * 1000 / (wpc_vout.intval / 1000);
+				if (iusb_ua < pdata->input_current_limit)
+					pdata->input_current_limit = iusb_ua;
+			}
 		}
 	}
 

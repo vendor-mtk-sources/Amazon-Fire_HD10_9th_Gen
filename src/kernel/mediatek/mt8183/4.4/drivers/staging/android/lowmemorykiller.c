@@ -98,7 +98,9 @@ static DEFINE_SPINLOCK(lowmem_shrink_lock);
 #define CREATE_TRACE_POINTS
 #include "trace/lowmemorykiller.h"
 
+#ifndef CONFIG_MTK_DISABLE_LMK_PROMOTE_PRIORITY
 #include "internal.h"
+#endif
 
 static u32 lowmem_debug_level = 1;
 static short lowmem_adj[9] = {
@@ -286,7 +288,9 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	static unsigned long lowmem_print_extra_info_timeout;
 	enum zone_type high_zoneidx = gfp_zone(sc->gfp_mask);
 	int p_state_is_found = 0;
+#ifndef CONFIG_MTK_DISABLE_LMK_PROMOTE_PRIORITY
 	int unreclaimable_zones = 0;
+#endif
 #ifdef CONFIG_SWAP
 	int to_be_aggressive = 0;
 	unsigned long swap_pages = 0;
@@ -340,9 +344,11 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 					zone_page_state(z, NR_INACTIVE_ANON) +
 					new_other_free;
 
+#ifndef CONFIG_MTK_DISABLE_LMK_PROMOTE_PRIORITY
 				/* Check whether there is any unreclaimable memory zone */
 				if (populated_zone(z) && !zone_reclaimable(z))
 					unreclaimable_zones++;
+#endif
 			}
 		}
 
@@ -423,9 +429,11 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	min_score_adj = min(min_score_adj, amr_adj);
 #endif
 
+#ifndef CONFIG_MTK_DISABLE_LMK_PROMOTE_PRIORITY
 	/* Promote its priority */
 	if (unreclaimable_zones > 0)
 		min_score_adj = lowmem_adj[0];
+#endif
 
 	lowmem_print(3, "lowmem_scan %lu, %x, ofree %d %d, ma %hd\n",
 			sc->nr_to_scan, sc->gfp_mask, other_free,
@@ -828,8 +836,18 @@ static struct shrinker lowmem_shrinker = {
 
 static int __init lowmem_init(void)
 {
+#ifndef CONFIG_MTK_DISABLE_LMK_PROMOTE_PRIORITY
 #if defined(CONFIG_ZRAM) && defined(CONFIG_MTK_GMO_RAM_OPTIMIZE)
 	vm_swappiness = 100;
+#endif
+#else
+#ifdef CONFIG_ZRAM
+#ifdef CONFIG_MTK_GMO_RAM_OPTIMIZE
+	vm_swappiness = 150;
+#else
+	vm_swappiness = 100;
+#endif
+#endif
 #endif
 	register_shrinker(&lowmem_shrinker);
 

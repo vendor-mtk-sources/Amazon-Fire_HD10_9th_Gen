@@ -58,6 +58,10 @@
 ********************************************************************************
 */
 #define RX_RESPONSE_TIMEOUT (1000)
+#ifdef ENABLED_IN_ENGUSERDEBUG
+extern enum UT_TRIGGER_CHIP_RESET trChipReset;
+#endif
+
 
 #if 0 /* CFG_SUPPORT_SNIFFER */
 /* in unit of 100kb/s */
@@ -106,6 +110,10 @@ const UINT_8 aucHwRate2PhyRate[] = {
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+extern WAKEUP_STATISTIC g_arWakeupStatistic[WAKEUP_TYPE_NUM];
+extern UINT_32 g_wake_event_count[EVENT_ID_END];
+#endif
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A
@@ -1380,6 +1388,26 @@ VOID nicRxProcessDataPacket(IN P_ADAPTER_T prAdapter, IN OUT P_SW_RFB_T prSwRfb)
 			fgDrop = TRUE;	/* Drop after send de-auth  */
 		}
 	}
+	/* Drop plain text during security connection */
+	if (!fgDrop && HAL_RX_STATUS_IS_CIPHER_MISMATCH(prRxStatus)) {
+		PUINT_8 pucData = NULL;
+		UINT_16 u2EtherType = 0;
+
+		nicRxFillRFB(prAdapter, prSwRfb);
+		pucData = (PUINT_8)prSwRfb->pvHeader;
+		if ((prSwRfb->u2PacketLen > ETHER_HEADER_LEN) && pucData) {
+			u2EtherType = (pucData[ETH_TYPE_LEN_OFFSET] << 8)
+				| (pucData[ETH_TYPE_LEN_OFFSET + 1]);
+			if ((u2EtherType != NTOHS(ETH_P_1X))
+#if CFG_SUPPORT_WAPI
+				|| (u2EtherType != NTOHS(ETH_WPI_1X))
+#endif
+				) {
+				fgDrop = TRUE;
+			}
+		}
+		DBGLOG(RSN, INFO, "HAL_RX_STATUS_IS_CIPHER_MISMATCH fgDrop =%d\n", fgDrop);
+	}
 
 #if CFG_TCP_IP_CHKSUM_OFFLOAD || CFG_TCP_IP_CHKSUM_OFFLOAD_NDIS_60
 	if (fgDrop == FALSE) {
@@ -1702,7 +1730,7 @@ VOID nicRxProcessEventPacket(IN P_ADAPTER_T prAdapter, IN OUT P_SW_RFB_T prSwRfb
 
 #if CFG_SUPPORT_WAKEUP_STATISTICS
 	if (is_wakeup)
-		prAdapter->wake_event_count[prEvent->ucEID]++;
+		g_wake_event_count[prEvent->ucEID]++;
 #endif
 #if CFG_SUPPORT_WIFI_POWER_DEBUG
 	if (glIsDataStatEnabled() && !kalTRxStatsPaused())
@@ -2521,6 +2549,11 @@ VOID nicRxProcessEventPacket(IN P_ADAPTER_T prAdapter, IN OUT P_SW_RFB_T prSwRfb
 	case EVENT_ID_UPDATE_FW_INFO:
 		nicEventUpdateFwInfo(prAdapter, prEvent);
 		break;
+#if CFG_SUPPORT_BA_OFFLOAD
+	case EVENT_ID_BAOFFLOAD_INDICATION:
+		qmHandleEventBaOffloadIndication(prAdapter, prEvent);
+		break;
+#endif
 	case EVENT_ID_ACCESS_REG:
 	case EVENT_ID_NIC_CAPABILITY:
 		/* case EVENT_ID_MAC_MCAST_ADDR: */
@@ -2587,6 +2620,14 @@ VOID nicRxProcessMgmtPacket(IN P_ADAPTER_T prAdapter, IN OUT P_SW_RFB_T prSwRfb)
 		if (aucDebugModule[DBG_RX_IDX] & DBG_CLASS_INFO)
 			DBGLOG_MEM8(RX, INFO, (PUINT_8) prSwRfb->pvHeader,
 						(UINT_32)prSwRfb->u2PacketLen);
+	}
+#endif
+#ifdef ENABLED_IN_ENGUSERDEBUG
+	if (trChipReset == TRIGGER_RESET_RX_STATUS_GROUP3_WRONG) {
+		prSwRfb->prRxStatusGroup3 = NULL;
+		DBGLOG(NIC, ERROR,"trigger chip reset RX GROUP3 WRONG %d \n",trChipReset);
+		trChipReset = TRIGGER_RESET_START;
+
 	}
 #endif
 
@@ -2885,6 +2926,15 @@ VOID nicRxProcessRFBs(IN P_ADAPTER_T prAdapter)
 				}
 				if (kalIsWakeupByWlan(prAdapter))
 					nicRxCheckWakeupReason(prSwRfb);
+#endif
+#ifdef ENABLED_IN_ENGUSERDEBUG
+				if (trChipReset == TRIGGER_RESET_PKT_ERROR_MAX) {
+					u4PktErrCount=5;
+					prSwRfb->prRxStatus->u2RxByteCount=200;
+					prSwRfb->ucPacketType = RX_PKT_TYPE_TX_STATUS;
+					DBGLOG(NIC, ERROR, "trigger chip reset PKT ERROR OVER MAX %d \n",trChipReset);
+					trChipReset = TRIGGER_RESET_START;
+				}
 #endif
 
 				switch (prSwRfb->ucPacketType) {
@@ -3353,6 +3403,13 @@ VOID nicRxSDIOAggReceiveRFBs(IN P_ADAPTER_T prAdapter)
 			u2RxPktNum =
 			    (rxNum ==
 			     0 ? prEnhDataStr->rRxInfo.u.u2NumValidRx0Len : prEnhDataStr->rRxInfo.u.u2NumValidRx1Len);
+#ifdef ENABLED_IN_ENGUSERDEBUG
+			if (trChipReset == TRIGGER_RESET_RX_PKTNUM_OVERSIZE) {
+				u2RxPktNum = 17;
+				DBGLOG(NIC, ERROR, "trigger chip reset BIT(4) %d \n",trChipReset);
+				trChipReset = TRIGGER_RESET_START;
+			}
+#endif
 
 			if (u2RxPktNum > 16) {
 				DBGLOG(RX, ERROR, "Abnormal PktNum(%d) in RX%u, need chip reset!\n",

@@ -36,6 +36,10 @@
 */
 #include "precomp.h"
 #include "queue.h"
+#ifdef FW_CFG_SUPPORT
+#include "fwcfg.h"
+#endif
+
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -107,6 +111,9 @@ const UINT_8 aucWmmAC2TcResourceSet2[WMM_AC_INDEX_NUM] = {
 static UINT_16 arpMoniter;
 static UINT_8 apIp[4];
 static UINT_8 gatewayIp[4];
+#endif
+#ifdef ENABLED_IN_ENGUSERDEBUG
+extern enum UT_TRIGGER_CHIP_RESET trChipReset;
 #endif
 
 /*******************************************************************************
@@ -2487,6 +2494,14 @@ P_SW_RFB_T qmHandleRxPackets(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_T prSwRfbList
 
 		fgIsBMC = HAL_RX_STATUS_IS_BC(prRxStatus) | HAL_RX_STATUS_IS_MC(prRxStatus);
 		fgIsHTran = FALSE;
+#ifdef ENABLED_IN_ENGUSERDEBUG
+		if (trChipReset == TRIGGER_RESET_RX_STATUS_GROUP4_NULL) {
+			prCurrSwRfb->prRxStatusGroup4 = NULL;
+			DBGLOG(QM, ERROR, "trigger chip reset GROUGP4 trChipReset =%d !!!\n",trChipReset);
+			trChipReset = TRIGGER_RESET_START;
+		}
+#endif
+
 		if (HAL_RX_STATUS_GET_HEADER_TRAN(prRxStatus) == TRUE) { /* (!HIF_RX_HDR_GET_80211_FLAG(prHifRxHdr)){ */
 
 			UINT_8 ucBssIndex;
@@ -4227,8 +4242,39 @@ VOID mqmProcessAssocRsp(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_T prSwRfb, IN PUIN
 #endif
 		}
 		DBGLOG(QM, TRACE, "MQM: Assoc_Rsp Parsing (QoS Enabled=%d)\n", prStaRec->fgIsQoS);
-		if (prStaRec->fgIsWmmSupported)
+		if (prStaRec->fgIsWmmSupported) {
+#if CFG_SUPPORT_WLAN_CUSTOMIZE_WMM
+			UINT_8 *cmdBuffer = NULL;
+			char aucValueBuf[8];
+
+			P_BSS_INFO_T prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prStaRec->ucBssIndex);
+			P_AC_QUE_PARMS_T prBeParam = (prBssInfo ? &prBssInfo->arACQueParms[WMM_AC_BE_INDEX] : NULL);
+			/* If AP's parameters are same as default value of firmware customer configurations, no need to set them again.
+			** Default value of firmware are: AIFSN=3, CWmin=4, CWMax=10, txop=0. CWMin and CWMax in AC_params are in unit
+			** of slots, but these values are encoded in exponential of 2.
+			*/
+			if (prBeParam &&
+			    (prBeParam->u2TxopLimit != 0 || prBeParam->u2CWmax != 1023 ||
+			    prBeParam->u2CWmin != 15 || prBeParam->u2Aifsn != 3)) {
+				cmdBuffer = kalMemAlloc(MAX_CMD_BUFFER_LENGTH, VIR_MEM_TYPE);
+				if (cmdBuffer) {
+					kalMemSet(cmdBuffer, 0, MAX_CMD_BUFFER_LENGTH);
+					kalSnprintf(aucValueBuf, sizeof(aucValueBuf), "%d", prBeParam->u2TxopLimit);
+					wlanCfgFwSetParam(cmdBuffer, "TxOp", aucValueBuf, 0, 1);
+					kalSnprintf(aucValueBuf, sizeof(aucValueBuf), "%d", prBeParam->u2CWmax);
+					wlanCfgFwSetParam(cmdBuffer, "CwMax", aucValueBuf, 1, 1);
+					kalSnprintf(aucValueBuf, sizeof(aucValueBuf), "%d", prBeParam->u2CWmin);
+					wlanCfgFwSetParam(cmdBuffer, "CwMin", aucValueBuf, 2, 1);
+					kalSnprintf(aucValueBuf, sizeof(aucValueBuf), "%d", prBeParam->u2Aifsn);
+					wlanCfgFwSetParam(cmdBuffer, "AifsN", aucValueBuf, 3, 1);
+					wlanCfgSetGetFw(prAdapter, cmdBuffer, MAX_CMD_ITEM_MAX, CMD_TYPE_SET);
+					kalMemFree(cmdBuffer, VIR_MEM_TYPE, MAX_CMD_BUFFER_LENGTH);
+					DBGLOG(QM, INFO, "Set WMM BE param by cfg\n");
+				}
+			}
+#endif
 			nicQmUpdateWmmParms(prAdapter, prStaRec->ucBssIndex);
+			}
 	}
 }
 
@@ -6536,3 +6582,177 @@ VOID qmHandleDelTspec(P_ADAPTER_T prAdapter, P_STA_RECORD_T prStaRec, ENUM_ACI_T
 	nicTxAdjustTcq(prAdapter);
 	kalSetEvent(prAdapter->prGlueInfo);
 }
+
+#if CFG_SUPPORT_BA_OFFLOAD
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Handle BAR
+ *
+ * \param[in] prAdapter Adapter pointer
+ * \param[in] ucStaRecIdx  staRecidx from fw
+ * \param[in] ucTid  uctid from fw
+ * \param[in] u4SSN SSN from FW
+ *
+ * \return (none)
+ */
+/*----------------------------------------------------------------------------*/
+
+void qmHandleBaOffloadBarFrame(IN P_ADAPTER_T prAdapter,
+	IN uint8_t ucStaRecIdx, IN uint8_t ucTid, IN uint32_t u4SSN)
+
+{
+
+	P_STA_RECORD_T prStaRec;
+	P_RX_BA_ENTRY_T prReorderQueParm;
+	QUE_T rReturnedQue;
+	P_QUE_T prReturnedQue = &rReturnedQue;
+	P_QUE_T prReorderQue;
+	uint32_t u4WinStart;
+	uint32_t u4WinEnd;
+
+	DBGLOG(QM, TRACE, "[BAOFD]Receive BAR sta %d tid %d SSN %d!!\n",
+		ucStaRecIdx, ucTid, u4SSN);
+
+	QUEUE_INITIALIZE(prReturnedQue);
+
+	/* Check whether the STA_REC is activated */
+	prStaRec = cnmGetStaRecByIndex(prAdapter, ucStaRecIdx);
+	if (prStaRec == NULL) {
+		return;
+	}
+
+	/* Check whether the BA agreement exists */
+	prReorderQueParm = prStaRec->aprRxReorderParamRefTbl[ucTid];
+	if (!prReorderQueParm) {
+		DBGLOG(QM, WARN, "[BAOFD]BAR for a NULL ReorderQueParm!!\n");
+		return;
+	}
+
+	prReorderQue = &(prReorderQueParm->rReOrderQue);
+	u4WinStart = (uint32_t) (prReorderQueParm->u2WinStart);
+	u4WinEnd = (uint32_t) (prReorderQueParm->u2WinEnd);
+
+	if (qmCompareSnIsLessThan(u4WinStart, u4SSN)) {
+		prReorderQueParm->u2WinStart = (uint16_t) u4SSN;
+		prReorderQueParm->u2WinEnd =
+			((prReorderQueParm->u2WinStart) +
+			(prReorderQueParm->u2WinSize) - 1) % MAX_SEQ_NO_COUNT;
+#if CFG_SUPPORT_RX_AMSDU
+		/* RX reorder for one MSDU in AMSDU issue */
+		prReorderQueParm->u8LastAmsduSubIdx = RX_PAYLOAD_FORMAT_MSDU;
+#endif
+		DBGLOG(QM, TRACE,
+			"[BAOFD]Advance Case OldStart %d OldEnd %d WinStart %d WinEnd %d\n",
+			u4WinStart, u4WinEnd,
+			prReorderQueParm->u2WinStart,
+			prReorderQueParm->u2WinEnd);
+		qmPopOutDueToFallAhead(prAdapter, prReorderQueParm,
+			prReturnedQue);
+	} else {
+		DBGLOG(QM, TRACE,
+			"[BAOFD]No-Pop Case tid %d SSN %d WinStart %d WinEnd %d\n",
+			ucTid, u4SSN, u4WinStart, u4WinEnd);
+	}
+
+	if (QUEUE_IS_NOT_EMPTY(prReturnedQue)) {
+		DBGLOG(QM, TRACE, "[BAOFD]Need to Pop out packet\n");
+		QM_TX_SET_NEXT_MSDU_INFO(
+			(P_SW_RFB_T) QUEUE_GET_TAIL(
+			prReturnedQue), NULL);
+		wlanProcessQueuedSwRfb(prAdapter,
+			(P_SW_RFB_T)
+			QUEUE_GET_HEAD(prReturnedQue));
+	}
+}
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Handle BAR/ADDBA/DELBA event
+ *
+ * \param[in] prAdapter Adapter pointer
+ * \param[in] prEvent The event packet from the FW
+ *
+ * \return (none)
+ */
+/*----------------------------------------------------------------------------*/
+void qmHandleEventBaOffloadIndication(IN P_ADAPTER_T prAdapter,
+		IN P_WIFI_EVENT_T prEvent)
+{
+	struct EVENT_BAOFFLOAD_INDICATE *prEventBaOffloadIndicate;
+	struct BAOFFLOAD_INDICATE_INFO sBaOffloadInfo;
+	P_STA_RECORD_T prStaRec;
+	uint8_t ucStaRecIdx;
+	uint8_t i;
+
+	ASSERT(prAdapter);
+
+	kalMemZero(&sBaOffloadInfo, sizeof(struct BAOFFLOAD_INDICATE_INFO));
+
+	prEventBaOffloadIndicate =
+		(struct EVENT_BAOFFLOAD_INDICATE *)(prEvent->aucBuffer);
+
+	DBGLOG(QM, TRACE,
+		"[BAOFD]Receive BAR/ADDBA/DELBA Event count %d!!\n",
+		prEventBaOffloadIndicate->ucEventCnt);
+
+	for (i = 0; i < prEventBaOffloadIndicate->ucEventCnt; i++) {
+		kalMemCopy(&sBaOffloadInfo,
+			&prEventBaOffloadIndicate->sBaOffloadIndicateInfo[i],
+			sizeof(struct BAOFFLOAD_INDICATE_INFO));
+
+		ucStaRecIdx = sBaOffloadInfo.ucStaRecIdx;
+		prStaRec = QM_GET_STA_REC_PTR_FROM_INDEX(prAdapter, ucStaRecIdx);
+		if (!prStaRec) {
+			DBGLOG(QM, WARN, "[BAOFD]NULL STA_REC!! ucStaRecIdx \n",ucStaRecIdx);
+			continue;
+		}
+
+		if (sBaOffloadInfo.ucTid >= CFG_RX_MAX_BA_TID_NUM) {
+			DBGLOG(QM, WARN, "[BAOFD]Invalid TID %d!!\n",
+				sBaOffloadInfo.ucTid);
+			continue;
+		}
+
+		switch (sBaOffloadInfo.eBaOffloadIndicateType) {
+		case BAOFFLOAD_INDICATE_BAR:
+			DBGLOG(QM, TRACE, "[BAOFD]Handle BAR %d %d %d!!\n",
+				ucStaRecIdx,
+				sBaOffloadInfo.ucTid,
+				sBaOffloadInfo.u4SSN);
+			qmHandleBaOffloadBarFrame(prAdapter,
+				ucStaRecIdx,
+				sBaOffloadInfo.ucTid,
+				sBaOffloadInfo.u4SSN);
+			break;
+
+		case BAOFFLOAD_INDICATE_ADDBA:
+			DBGLOG(QM, TRACE, "[BAOFD]Handle ADDBA %d %d %d %d!!\n",
+				ucStaRecIdx,
+				sBaOffloadInfo.ucTid,
+				sBaOffloadInfo.u4SSN,
+				sBaOffloadInfo.u4WinSize);
+			if (qmAddRxBaEntry(prAdapter,
+				ucStaRecIdx,
+				sBaOffloadInfo.ucTid,
+				sBaOffloadInfo.u4SSN,
+				(uint16_t)sBaOffloadInfo.u4WinSize) != TRUE) {
+				DBGLOG(QM, WARN,
+					   "QM: (Warning) Process ADDBA fail\n");
+			}
+			break;
+
+		case BAOFFLOAD_INDICATE_DELBA:
+			DBGLOG(QM, TRACE, "[BAOFD]Handle DELBA %d %d!!\n",
+				ucStaRecIdx,
+				sBaOffloadInfo.ucTid);
+			qmDelRxBaEntry(prAdapter,
+				ucStaRecIdx,
+				sBaOffloadInfo.ucTid,
+				TRUE);
+			break;
+		default:
+			DBGLOG(QM, WARN, "[BAOFD]Should Not Enter Here!!\n");
+			break;
+		}
+	}
+}
+#endif

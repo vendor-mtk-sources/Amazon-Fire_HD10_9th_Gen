@@ -92,6 +92,74 @@ extern int g_debugfs_enable_latency_check;
 static ktime_t g_ts_irq_in;
 static char buffer[128];
 #endif
+
+#define CABC_REG    0xE1
+int ft8201_share_cabc_write(u8 mode)
+{
+	int ret = 0;
+	u8 fwver = 0;
+	struct fts_ts_data *ts_data = fts_data;
+
+	FTS_FUNC_ENTER();
+	if (!ts_data || !ts_data->client) {
+		FTS_ERROR("FTS is not initlized.");
+		return -1;
+	}
+	if (ts_data->suspended) {
+		FTS_ERROR("TP suspended, should not setup TP registers.");
+		return -1;
+	}
+
+	if (ts_data->fw_loading) {
+		FTS_ERROR("fw upgrade in process, can't setup TP registers.");
+		return -1;
+	}
+	if ((mode < 0) || (mode >= 4)) {
+		FTS_ERROR("Invalid CABC mode: %d", mode);
+		return -1;
+	}
+
+	ret = fts_read_reg(FTS_REG_FW_VER, &fwver);
+	if (ret < 0)
+		FTS_ERROR("check fw version fail ret=%d", ret);
+	else
+		FTS_INFO("check fw version = %X", fwver);
+
+	FTS_INFO("setup ft8201: 0x%x=%d", CABC_REG, mode);
+
+	ret = fts_write_reg(CABC_REG, mode);
+	FTS_FUNC_EXIT();
+	return ret;
+}
+EXPORT_SYMBOL(ft8201_share_cabc_write);
+
+int ft8201_share_cabc_read(u8 *mode)
+{
+	int ret = 0;
+	struct fts_ts_data *ts_data = fts_data;
+
+	FTS_FUNC_ENTER();
+	if (!ts_data || !ts_data->client) {
+		FTS_ERROR("FTS is not initlized.");
+		return -1;
+	}
+	if (ts_data->suspended) {
+		FTS_ERROR("TP suspended, should not read TP registers.");
+		return -1;
+	}
+	if (ts_data->fw_loading) {
+		FTS_ERROR("fw upgrade in process, can't read TP registers.");
+		return -1;
+	}
+
+	ret = fts_read_reg(CABC_REG, mode);
+
+	FTS_INFO("ft8201: 0x%x=%d", CABC_REG, *mode);
+	FTS_FUNC_EXIT();
+	return ret;
+}
+EXPORT_SYMBOL(ft8201_share_cabc_read);
+
 /*****************************************************************************
 *  Name: fts_wait_tp_to_valid
 *  Brief: Read chip id until TP FW become valid(Timeout: TIMEOUT_READ_REG),
@@ -731,11 +799,11 @@ static int touch_event_handler(void *unused)
 
 	sched_setscheduler(current, SCHED_RR, &param);
 	do {
-		set_current_state(TASK_INTERRUPTIBLE);
+		/* set_current_state(TASK_INTERRUPTIBLE); */
 		wait_event_interruptible(waiter, tpd_flag != 0);
 
 		tpd_flag = 0;
-		set_current_state(TASK_RUNNING);
+		/* set_current_state(TASK_RUNNING); */
 
 #if FTS_PSENSOR_EN
 		if (fts_proximity_readdata(fts_data) == 0)

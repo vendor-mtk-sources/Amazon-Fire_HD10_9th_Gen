@@ -118,6 +118,7 @@
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
+extern struct WIFI_ON_TIME_STATISTICS wifiOnTimeStatistics;
 
 static struct nla_policy nla_parse_wifi_policy[WIFI_ATTRIBUTE_ROAMING_WHITELIST_SSID + 1] = {
 	[WIFI_ATTRIBUTE_BAND] = {.type = NLA_U32},
@@ -1229,43 +1230,83 @@ int mtk_cfg80211_vendor_llstats_get_info(struct wiphy *wiphy, struct wireless_de
 {
 	INT_32 i4Status = -EINVAL;
 	WIFI_RADIO_STAT *pRadioStat;
-	struct sk_buff *skb;
+	struct sk_buff *skb = NULL;
 	UINT_32 u4BufLen = 0;
+	PARAM_802_11_STATISTICS_STRUCT_T rStatistics;
+	P_GLUE_INFO_T prGlueInfo = NULL;
+	P_SCAN_INFO_T prScanInfo = NULL;
+	WIFI_IFACE_STAT *pIfaceStat = NULL;
+	OS_SYSTIME currentTime;
+	UINT_32 tmpLen = 0;
 
 	ASSERT(wiphy);
 	ASSERT(wdev);
+
+	prGlueInfo = (P_GLUE_INFO_T) wiphy_priv(wiphy);
+	if (!prGlueInfo)
+		return -EFAULT;
 
 	u4BufLen = sizeof(WIFI_RADIO_STAT) + sizeof(WIFI_IFACE_STAT);
 	pRadioStat = kalMemAlloc(u4BufLen, VIR_MEM_TYPE);
 	if (!pRadioStat) {
 		DBGLOG(REQ, ERROR, "%s kalMemAlloc pRadioStat failed\n", __func__);
-		return -ENOMEM;
+		i4Status = -ENOMEM;
+		goto nla_put_failure;
 	}
 	kalMemZero(pRadioStat, u4BufLen);
-
+	pIfaceStat = (WIFI_IFACE_STAT *)((uint8_t *)pRadioStat + sizeof(WIFI_RADIO_STAT));
 	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, u4BufLen);
 	if (!skb) {
 		kalMemFree(pRadioStat, VIR_MEM_TYPE, u4BufLen);
+		pRadioStat = NULL;
 		DBGLOG(REQ, TRACE, "%s allocate skb failed:%x\n", __func__, i4Status);
-		return -ENOMEM;
+		i4Status = -ENOMEM;
+		goto nla_put_failure;
 	}
-
-#if 0
-	rStatus = kalIoctl(prGlueInfo,
-			   wlanoidQueryStatistics,
-			   &rRadioStat,
-			   sizeof(rRadioStat),
-			   TRUE,
-			   TRUE,
-			   TRUE,
-			   FALSE,
-			   &u4BufLen);
-#endif
-	/* only for test */
-	pRadioStat->radio = 10;
-	pRadioStat->on_time = 11;
-	pRadioStat->tx_time = 12;
-	pRadioStat->num_channels = 4;
+	/*get scan time*/
+	prScanInfo = &(prGlueInfo->prAdapter->rWifiVar.rScanInfo);
+	pRadioStat->on_time_scan = prScanInfo->u4TotalScanTime;
+	/*get wifi on time*/
+	GET_CURRENT_SYSTIME(&currentTime);
+	pRadioStat->on_time = wifiOnTimeStatistics.u4WifiOnTimeDuringScreenOff + wifiOnTimeStatistics.u4WifiOnTimeDuringScreenOn;
+	/*CMD_ID_GET_STATISTICS*/
+	i4Status = kalIoctl(prGlueInfo,
+		wlanoidQueryStatistics,
+		&rStatistics,
+		sizeof(PARAM_802_11_STATISTICS_STRUCT_T),
+		TRUE,
+		TRUE,
+		TRUE,
+		&tmpLen);
+	if (i4Status != WLAN_STATUS_SUCCESS) {
+		DBGLOG(REQ, WARN, "unable to get statistics\n");
+		goto nla_put_failure;
+	}
+	pIfaceStat->ac[WIFI_AC_BE].rx_mpdu = rStatistics.rReceivedFragmentCount.u.LowPart;
+	pIfaceStat->ac[WIFI_AC_BE].tx_mpdu = rStatistics.rTransmittedFragmentCount.u.LowPart;
+	pIfaceStat->ac[WIFI_AC_BE].mpdu_lost = rStatistics.rFailedCount.u.LowPart;
+	pIfaceStat->ac[WIFI_AC_BE].retries = rStatistics.rRetryCount.u.LowPart;
+	/*CMD_ID_GET_LINK_QUALITY*/
+	i4Status = kalIoctl(prGlueInfo,
+		wlanoidQueryRssi,
+		&pIfaceStat->rssi_mgmt,
+		sizeof(pIfaceStat->rssi_mgmt),
+		TRUE,
+		TRUE,
+		TRUE,
+		&tmpLen);
+	if (i4Status != WLAN_STATUS_SUCCESS) {
+		DBGLOG(REQ, WARN, "unable to get rssi\n");
+		goto nla_put_failure;
+	}
+	/*print stats informations*/
+	DBGLOG(REQ, TRACE, "RSSI of management frames: %d\n", pIfaceStat->rssi_mgmt);
+	DBGLOG(REQ, TRACE, "Received mpdu: %d\n", pIfaceStat->ac[WIFI_AC_BE].rx_mpdu);
+	DBGLOG(REQ, TRACE, "Transmitted mpdu: %d\n", pIfaceStat->ac[WIFI_AC_BE].tx_mpdu);
+	DBGLOG(REQ, TRACE, "lost mpdu: %d\n", pIfaceStat->ac[WIFI_AC_BE].mpdu_lost);
+	DBGLOG(REQ, TRACE, "Retry mpdu: %d\n", pIfaceStat->ac[WIFI_AC_BE].retries);
+	DBGLOG(REQ, TRACE, "wifi radio on time(unit ms): %d\n", pRadioStat->on_time);
+	DBGLOG(REQ, TRACE, "scan time(unit ms): %d\n", pRadioStat->on_time_scan);
 
 	/*NLA_PUT(skb, LSTATS_ATTRIBUTE_STATS, u4BufLen, pRadioStat);*/
 	if (unlikely(nla_put(skb, LSTATS_ATTRIBUTE_STATS, u4BufLen, pRadioStat) < 0))
@@ -1273,12 +1314,14 @@ int mtk_cfg80211_vendor_llstats_get_info(struct wiphy *wiphy, struct wireless_de
 
 	i4Status = cfg80211_vendor_cmd_reply(skb);
 	kalMemFree(pRadioStat, VIR_MEM_TYPE, u4BufLen);
-	return -1; /* not support LLS now*/
 	/* return i4Status; */
+	return i4Status;
 
 nla_put_failure:
-	kalMemFree(pRadioStat, VIR_MEM_TYPE, u4BufLen);
-	kfree_skb(skb);
+	if (skb != NULL)
+		kfree_skb(skb);
+	if (pRadioStat != NULL)
+		kalMemFree(pRadioStat, VIR_MEM_TYPE, u4BufLen);
 	return i4Status;
 }
 

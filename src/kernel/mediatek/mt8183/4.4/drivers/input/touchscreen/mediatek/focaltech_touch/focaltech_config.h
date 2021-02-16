@@ -136,7 +136,7 @@
  * show debug log info
  * enable it for debug, disable it for release
  */
-#define FTS_DEBUG_EN                            1
+#define FTS_DEBUG_EN                            0
 
 /*
  * Linux MultiTouch Protocol
@@ -230,12 +230,12 @@
  * You should rename fw to "focaltech_ts_fw_tianma", and push it into
  * etc/firmware or by customers
  */
-#define FTS_MODULE_NAME                        "FC_FW_KD_HSD_V0x04_all"
-#define FTS_MODULE2_NAME                       "FC_FW_KD_MANTIX_V0x35_all"
-#define FTS_MODULE3_NAME                       "FC_FW_ST_HSD_V0x63_all"
-#define FTS_MODULE4_NAME                       "FC_FW_TG_BOE_V0x92_all"
-#define FTS_MODULE5_NAME                       "FC_FW_KD_INX_V0xe4_all"
-#define FTS_MODULE6_NAME                       "FC_FW_ST_BOE_V0xc1_all"
+#define FTS_MODULE_NAME                        "FC_FW_KD_HSD_V0x06_all"
+#define FTS_MODULE2_NAME                       "FC_FW_KD_MANTIX_V0x36_all"
+#define FTS_MODULE3_NAME                       "FC_FW_ST_HSD_V0x64_all"
+#define FTS_MODULE4_NAME                       "FC_FW_TG_BOE_V0x93_all"
+#define FTS_MODULE5_NAME                       "FC_FW_KD_INX_V0xe5_all"
+#define FTS_MODULE6_NAME                       "FC_FW_ST_BOE_V0xc2_all"
 
 
 

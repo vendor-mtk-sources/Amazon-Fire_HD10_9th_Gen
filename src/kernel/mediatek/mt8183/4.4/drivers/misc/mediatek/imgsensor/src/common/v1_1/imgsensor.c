@@ -1652,7 +1652,7 @@ static long imgsensor_ioctl(
 	void *pBuff = NULL;
 
 	if (_IOC_DIR(a_u4Command) != _IOC_NONE) {
-		pBuff = kmalloc(_IOC_SIZE(a_u4Command), GFP_KERNEL);
+		pBuff = kzalloc(_IOC_SIZE(a_u4Command), GFP_KERNEL);
 		if (pBuff == NULL) {
 			PK_DBG("[CAMERA SENSOR] ioctl allocate mem failed\n");
 			i4RetValue = -ENOMEM;

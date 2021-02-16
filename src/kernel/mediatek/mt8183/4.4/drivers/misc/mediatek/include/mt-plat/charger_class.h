@@ -72,6 +72,7 @@ struct charger_ops {
 	int (*get_input_current)(struct charger_device *, u32 *uA);
 	int (*set_input_current)(struct charger_device *, u32 uA);
 	int (*get_min_input_current)(struct charger_device *, u32 *uA);
+	int (*enable_input_current_limit_calibration)(struct charger_device *, bool enable);
 
 	/* set termination current */
 	int (*get_eoc_current)(struct charger_device *, u32 *uA);
@@ -186,6 +187,8 @@ extern int charger_dev_get_min_charging_current(struct charger_device *charger_d
 extern int charger_dev_set_input_current(struct charger_device *charger_dev, u32 uA);
 extern int charger_dev_get_input_current(struct charger_device *charger_dev, u32 *uA);
 extern int charger_dev_get_min_input_current(struct charger_device *charger_dev, u32 *uA);
+extern int charger_dev_enable_input_current_limit_calibration(
+	struct charger_device *charger_dev, bool enable);
 extern int charger_dev_set_eoc_current(struct charger_device *charger_dev, u32 uA);
 extern int charger_dev_get_eoc_current(struct charger_device *charger_dev, u32 *uA);
 extern int charger_dev_kick_wdt(struct charger_device *charger_dev);

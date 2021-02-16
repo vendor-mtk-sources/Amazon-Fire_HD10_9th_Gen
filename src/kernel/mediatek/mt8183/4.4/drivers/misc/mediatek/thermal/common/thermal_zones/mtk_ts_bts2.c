@@ -1234,8 +1234,8 @@ static ssize_t mtkts_bts2_param_write(struct file *file,
 		*can't use pin:2/3/4/5/6/7/8/9/10/11,
 		*choose "adc_channel=11" to check if there is any param input
 		*/
-		if ((ptr_mtktsbts2_parm_data->adc_channel >= 5) &&
-				(ptr_mtktsbts2_parm_data->adc_channel <= 10))
+		if ((ptr_mtktsbts2_parm_data->adc_channel < 0) ||
+				(ptr_mtktsbts2_parm_data->adc_channel > 15))
 			/* check unsupport pin value,
 			 *if unsupport, set channel = 2 as default setting.
 			 */

@@ -45,7 +45,11 @@ int __attribute__ ((weak)) get_immediate_gpu_wrap(void)
 	return 0;
 }
 
+#ifdef CONFIG_THERMAL_FOD
+int __attribute__ ((weak)) get_hw_bts_temp_export(int aux_channel, int level)
+#else
 int __attribute__ ((weak)) get_hw_bts_temp_export(int aux_channel)
+#endif
 {
 	pr_err("E_WF: %s doesn't exist\n", __func__);
 	return 0;
@@ -127,6 +131,31 @@ int vs_wpc_read_temp(void)
 	return val.intval * 1000;
 }
 
+#ifdef CONFIG_THERMAL_FOD
+static int fod_set_charging_level_limit(int level_limit,
+		enum power_supply_property property)
+{
+	int ret = 0;
+	union power_supply_propval propval;
+
+	if (!wpc_psy) {
+		wpc_psy = power_supply_get_by_name(WPC_NAME);
+		if (!wpc_psy) {
+			pr_err("%s: get power supply %s failed\n",
+				__func__, WPC_NAME);
+			return -1;
+		}
+	}
+
+	propval.intval = level_limit;
+	ret = power_supply_set_property(wpc_psy, property, &propval);
+	if (ret < 0)
+		pr_err("%s: VS set psy charging level_limit=%d failed, ret = %d\n",
+			__func__, level_limit, ret);
+	return ret;
+}
+#endif
+
 static int set_charging_level_limit(int level_limit,
 		enum power_supply_property property)
 {
@@ -156,8 +185,13 @@ void set_cpu_power_limit(int power_limit)
 }
 
 /* Get the current temperature of the thermal sensor. */
+#ifdef CONFIG_THERMAL_FOD
+int vs_thermal_sensor_get_temp(enum vs_thermal_sensor_id id, int index, int device)
+#else
 int vs_thermal_sensor_get_temp(enum vs_thermal_sensor_id id, int index)
+#endif
 {
+
 	switch (id) {
 	case VS_THERMAL_SENSOR_CPU:
 		return tscpu_get_temp_by_bank(THERMAL_BANK0);
@@ -170,7 +204,17 @@ int vs_thermal_sensor_get_temp(enum vs_thermal_sensor_id id, int index)
 	case VS_THERMAL_SENSOR_GPU:
 		return get_immediate_gpu_wrap();
 	case VS_THERMAL_SENSOR_THERMISTOR:
+#ifdef CONFIG_THERMAL_FOD
+		if (device == FOD_VS_DEVICEID) {
+			int retval = 0;
+			retval = get_hw_bts_temp_export(index, NTC_WPC) * 1000;
+			fod_printk("WPC_NTC_TEMP = %d\n", retval);
+			return retval;
+		}
+		return get_hw_bts_temp_export(index, 0) * 1000;
+#else
 		return get_hw_bts_temp_export(index) * 1000;
+#endif
 	case VS_THERMAL_SENSOR_WIRELESS_CHG:
 		return vs_wpc_read_temp();
 	case VS_THERMAL_SENSOR_CHARGER:
@@ -209,6 +253,12 @@ int vs_set_cooling_level(struct thermal_cooling_device *cdev,
 		return set_charging_level_limit(
 			(level_limit >= pdata->max_level) ? -1 : level_limit,
 				POWER_SUPPLY_PROP_THERMAL_INPUT_POWER_LIMIT);
+#ifdef CONFIG_THERMAL_FOD
+	case VS_THERMAL_COOLER_FOD_WIRELESS_CHG:
+		return fod_set_charging_level_limit(
+			(level_limit >= pdata->max_level) ? -1 : level_limit,
+				POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT);
+#endif
 	default:
 		pr_err("E_WF: %s doesn't exist thermal cooler\n",
 			__func__);

@@ -1320,6 +1320,12 @@ static int composite_ep0_queue(struct usb_composite_dev *cdev,
 {
 	int ret;
 
+	spin_lock(&cdev->lock);
+	if (!req) {
+		spin_unlock(&cdev->lock);
+		return 0;
+	}
+
 	ret = usb_ep_queue(cdev->gadget->ep0, req, gfp_flags);
 	if (ret == 0) {
 		if (cdev->req == req)
@@ -1329,6 +1335,7 @@ static int composite_ep0_queue(struct usb_composite_dev *cdev,
 		else
 			WARN(1, "unknown request %p\n", req);
 	}
+	spin_unlock(&cdev->lock);
 
 	return ret;
 }
@@ -1803,6 +1810,10 @@ unknown:
 			int				count = 0;
 
 			req = cdev->os_desc_req;
+			if (!req) {
+				pr_err("cdev->os_desc_req is NULL\n");
+				return 0;
+			}
 			req->context = cdev;
 			req->complete = composite_setup_complete;
 			buf = req->buf;

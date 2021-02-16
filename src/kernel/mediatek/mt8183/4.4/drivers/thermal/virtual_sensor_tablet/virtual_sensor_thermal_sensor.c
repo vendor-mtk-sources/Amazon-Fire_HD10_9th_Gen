@@ -54,8 +54,13 @@ static int virtual_sensor_thermal_sensor_read_temp(struct thermal_dev *tdev)
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_THERMAL_FOD
+	return vs_thermal_sensor_get_temp(tdev->tdp->thermal_sensor_id,
+				tdev->tdp->aux_channel_num, tdev->tdp->select_device);
+#else
 	return vs_thermal_sensor_get_temp(tdev->tdp->thermal_sensor_id,
 				tdev->tdp->aux_channel_num);
+#endif
 }
 
 static struct thermal_dev_ops virtual_sensor_thermal_sensor_fops = {
@@ -83,9 +88,16 @@ static ssize_t virtual_sensor_thermal_sensor_show_temp(struct device *dev,
 		return -EINVAL;
 	}
 
+#ifdef CONFIG_THERMAL_FOD
+	temp = vs_thermal_sensor_get_temp(
+				virtual_sensor->therm_fw->tdp->thermal_sensor_id,
+				virtual_sensor->therm_fw->tdp->aux_channel_num,
+				virtual_sensor->therm_fw->tdp->select_device);
+#else
 	temp = vs_thermal_sensor_get_temp(
 				virtual_sensor->therm_fw->tdp->thermal_sensor_id,
 				virtual_sensor->therm_fw->tdp->aux_channel_num);
+#endif
 
 	return scnprintf(buf, BUF_SIZE, "%d\n", temp);
 }

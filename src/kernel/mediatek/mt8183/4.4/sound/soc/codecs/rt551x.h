@@ -657,7 +657,7 @@ typedef struct {
 //	unsigned int Addr;
 //} SMicTDInfo;
 
-#ifdef CONFIG_SND_SOC_RT551X_ADF
+#ifdef CONFIG_AMAZON_DSP_FRAMEWORK
 #define	SMICFW_SYNC			0x23795889
 #define RT551X_CORE_NO (0)
 #endif

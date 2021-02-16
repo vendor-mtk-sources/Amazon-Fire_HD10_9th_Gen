@@ -129,6 +129,10 @@
 #define PRIV_CMD_EXCEPTION_STAT         42
 #endif
 
+#ifdef ENABLED_IN_ENGUSERDEBUG
+#define PRIV_CMD_TRIGGER_CHIP_RESET   43
+#endif
+
 #if CFG_SUPPORT_QA_TOOL
 #define PRIV_QACMD_SET                  29
 #endif

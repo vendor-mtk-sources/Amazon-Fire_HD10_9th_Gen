@@ -112,9 +112,9 @@ typedef enum _WAKEUP_TYPE {
 	WAKEUP_TYPE_NUM
 } WAKEUP_TYPE;
 typedef struct _WAKEUP_STATISTIC {
-	UINT_16 u2Count;
+	UINT_32 u4Count;
 	OS_SYSTIME rStartTime;
-	UINT_16 u2TimePerHundred;
+	UINT_32 u4TimePerHundred;
 } WAKEUP_STATISTIC, P_WAKEUP_STATISTIC;
 #endif
 /*******************************************************************************

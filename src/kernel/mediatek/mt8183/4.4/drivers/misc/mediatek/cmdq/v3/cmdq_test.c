@@ -934,9 +934,10 @@ static void testcase_prefetch_scenarios(void)
 			cmdq_append_command(hConfig, CMDQ_CODE_MOVE, 0, 0x1, 0, 0);
 
 		ret = cmdq_task_flush(hConfig);
+
+		cmdq_task_destroy(hConfig);
 	}
 
-	cmdq_task_destroy(hConfig);
 	CMDQ_LOG("%s END\n", __func__);
 }
 
@@ -3143,7 +3144,7 @@ static int32_t testcase_poll_monitor_callback(unsigned long data)
 
 static void testcase_poll_monitor_trigger(uint64_t pollReg, uint64_t pollValue, uint64_t pollMask)
 {
-	CMDQ_LOG("%s\n", __func__);
+	CMDQ_MSG("%s\n", __func__);
 
 	if (true == gPollMonitor.status) {
 		/* Reset monitor status */
@@ -3487,8 +3488,11 @@ static void testcase_track_task_cb(void)
 
 	cmdq_task_create(CMDQ_SCENARIO_DEBUG, &handle);
 	cmdq_task_reset(handle);
-	handle->engineFlag = (1LL << CMDQ_ENG_MDP_CAMIN);
-	cmdq_task_flush(handle);
+
+	if (handle != NULL) {
+		handle->engineFlag = (1LL << CMDQ_ENG_MDP_CAMIN);
+		cmdq_task_flush(handle);
+	}
 
 	cmdqCoreRegisterTrackTaskCB(CMDQ_GROUP_MDP, NULL);
 	CMDQ_LOG("%s END\n", __func__);
@@ -3946,9 +3950,11 @@ static void testcase_basic_jump_c(void)
 	const u32 max_rows = 10;
 	const u32 max_cols = 12;
 	u32 row_in_value = 0, col_in_value = 0;
-	u32 test_result, expect_result, expect_temp_sum;
-	CMDQ_VARIABLE cmdq_row, cmdq_col, cmdq_temp_sum, cmdq_result;
-	cmdqBackupSlotHandle slot_handle;
+
+	u32 test_result = 0, expect_result = 0, expect_temp_sum = 0;
+	CMDQ_VARIABLE cmdq_row = 0, cmdq_col = 0;
+	CMDQ_VARIABLE cmdq_temp_sum = 0, cmdq_result = 0;
+	cmdqBackupSlotHandle slot_handle = 0;
 
 	CMDQ_LOG("%s\n", __func__);
 
@@ -4033,9 +4039,11 @@ static void testcase_basic_jump_c_do_while(void)
 	const u32 max_rows = 10;
 	const u32 max_cols = 12;
 	u32 row_in_value = 0, col_in_value = 0;
-	u32 test_result, expect_result, expect_temp_sum;
-	CMDQ_VARIABLE cmdq_row, cmdq_col, cmdq_temp_sum, cmdq_result;
-	cmdqBackupSlotHandle slot_handle;
+
+	u32 test_result, expect_result = 0, expect_temp_sum = 0;
+	CMDQ_VARIABLE cmdq_row = 0, cmdq_col = 0;
+	CMDQ_VARIABLE cmdq_temp_sum = 0, cmdq_result = 0;
+	cmdqBackupSlotHandle slot_handle = 0;
 
 	CMDQ_LOG("%s\n", __func__);
 

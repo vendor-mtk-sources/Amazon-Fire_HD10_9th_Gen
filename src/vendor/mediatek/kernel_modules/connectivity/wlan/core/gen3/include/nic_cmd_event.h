@@ -425,6 +425,10 @@ typedef enum _ENUM_CMD_ID_T {
 #if CFG_SUPPORT_QA_TOOL
 	CMD_ID_ACCESS_RX_STAT,	/* 0xc8 (Query) */
 #endif /* CFG_SUPPORT_QA_TOOL */
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+	CMD_ID_FW_ACTIVE_TIME_STATISTICS = 0xc9, /*0xc9 (Set / Query)*/
+#endif
+
 	CMD_ID_CHIP_CONFIG = 0xCA,	/* 0xca (Set / Query) */
 	CMD_ID_STATS_LOG = 0xCB,	/* 0xcb (Set) */
 	CMD_ID_SET_RDD_CH = 0xE1,
@@ -440,6 +444,9 @@ typedef enum _ENUM_CMD_ID_T {
 	CMD_ID_SET_TDLS_CH_SW = 0xFB,
 	CMD_ID_SET_MONITOR = 0xFC,	/* 0xFC (Set) */
 	CMD_ID_GET_ANT_SWITCH_CAP = 0xFD,
+#if CFG_SUPPORT_BA_OFFLOAD
+	EVENT_ID_BAOFFLOAD_INDICATION = 0xFE,
+#endif
 	CMD_ID_END
 } ENUM_CMD_ID_T, *P_ENUM_CMD_ID_T;
 
@@ -526,6 +533,10 @@ typedef enum _ENUM_EVENT_ID_T {
 	EVENT_ID_RSP_CHNL_UTILIZATION = 0x59, /* 0x59 (Query - CMD_ID_REQ_CHNL_UTILIZATION) */
 
 	EVENT_ID_TDLS = 0x80,	/* TDLS event_id */
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+	EVENT_ID_FW_TIME_STATISTICS = 0x81,
+#endif
+
 	EVENT_ID_WIFI_LOG_LEVEL  = 0x8D,
 	EVENT_ID_UPDATE_FW_INFO = 0x90, /* 0x90 (Unsolicited) */
 	EVENT_ID_RSSI_MONITOR = 0xA1,
@@ -2383,6 +2394,15 @@ struct CMD_EVENT_LOG_LEVEL {
 	UINT_8 aucReserved[3];
 };
 
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+struct EVENT_FW_ACTIVE_TIME_STATISTICS {
+	UINT_32 u4TimeDuringScreenOn; /*unit ms*/
+	UINT_32 u4TimeDuringScreenOff; /*unit ms*/
+	UINT_32 u4HwTimeDuringScreenOn; /*unit ms*/
+	UINT_32 u4HwTimeDuringScreenOff; /*unit ms*/
+};
+#endif
+
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -2507,6 +2527,11 @@ VOID nicCmdEventDbgCntr(IN P_ADAPTER_T prAdapter, IN P_CMD_INFO_T prCmdInfo, IN 
 #if CFG_SUPPORT_REPLAY_DETECTION
 VOID nicCmdEventSetAddKey(IN P_ADAPTER_T prAdapter, IN P_CMD_INFO_T prCmdInfo, IN PUINT_8 pucEventBuf);
 VOID nicOidCmdTimeoutSetAddKey(IN P_ADAPTER_T prAdapter, IN P_CMD_INFO_T prCmdInfo);
+#endif
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+void nicCmdEventGetFwActiveTimeStatistics(IN P_ADAPTER_T prAdapter,
+	IN P_CMD_INFO_T prCmdInfo,
+	IN PUINT_8 pucEventBuf);
 #endif
 
 /*******************************************************************************

@@ -54,6 +54,12 @@ APPEND_VAR_IE_ENTRY_T txAssocReqIETable[] = {
 #if CFG_SUPPORT_802_11K
 	{(ELEM_HDR_LEN + 2), NULL, rlmGeneratePowerCapIE}, /* Element ID: 33 */
 #endif
+	/* fos_change begin */
+#if CFG_SUPPORT_SPEC_MGMT
+		{(ELEM_HDR_LEN + ELEM_MAX_LEN_SUPPORTED_CHANNELS),
+		 NULL, rlmReqGenerateSupportedChIE}
+		,			/* 36 */
+#endif /* fos_change end */
 
 	{(ELEM_HDR_LEN + ELEM_MAX_LEN_HT_CAP), NULL, rlmReqGenerateHtCapIE}
 	,			/* 45 */
@@ -175,8 +181,16 @@ UINT_16 assocBuildCapabilityInfo(IN P_ADAPTER_T prAdapter, IN P_STA_RECORD_T prS
 {
 	UINT_32 u4NonHTPhyType;
 	UINT_16 u2CapInfo;
+#if CFG_SUPPORT_SPEC_MGMT
+	P_BSS_INFO_T prBssInfo;
+#endif
 
 	ASSERT(prStaRec);
+
+/* fos_change begin */
+#if CFG_SUPPORT_SPEC_MGMT
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prStaRec->ucBssIndex);
+#endif /* fos_change end */
 
 	/* Set up our requested capabilities. */
 	u2CapInfo = CAP_INFO_ESS;
@@ -204,6 +218,17 @@ UINT_16 assocBuildCapabilityInfo(IN P_ADAPTER_T prAdapter, IN P_STA_RECORD_T prS
 			 */
 			u2CapInfo |= CAP_INFO_SHORT_PREAMBLE;
 		}
+/* fos_change begin */
+#if CFG_SUPPORT_SPEC_MGMT
+		/* 802.11h spectrum management is for 5G band, so
+		 * now we only enable spectrum management bit for 5G case.
+		 * In TGn 5.2.22, spectrum management bit should set to 1
+		 * to pass the UCC's check.
+		 */
+		if (prBssInfo && prBssInfo->eBand == BAND_5G)
+			u2CapInfo |= CAP_INFO_SPEC_MGT;
+#endif /* fos_change end */
+
 
 		if (rNonHTPhyAttributes[u4NonHTPhyType].fgIsShortSlotTimeOptionImplemented &&
 		    prAdapter->rWifiVar.fgIsShortSlotTimeOptionEnable) {

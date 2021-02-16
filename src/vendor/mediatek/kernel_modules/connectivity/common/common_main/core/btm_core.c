@@ -26,6 +26,7 @@
 #endif
 #include <linux/kthread.h>
 
+
 #define PFX_BTM                         "[STP-BTM] "
 #define STP_BTM_LOG_LOUD                 4
 #define STP_BTM_LOG_DBG                  3
@@ -95,7 +96,6 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 	INT32 ret = -1;
 	/* core dump target, 0: aee; 1: netlink */
 	INT32 dump_sink = mtk_wcn_stp_coredump_flag_get();
-
 	if (pStpOp == NULL)
 		return -1;
 
@@ -122,6 +122,7 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 #endif
 			stp_dbg_core_dump_flush(0, MTK_WCN_BOOL_FALSE);
 		}
+		notify_fwk_chip_reset();
 		STP_BTM_PR_INFO("....+\n");
 		WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_BEFORE_CHIP_RESET);
 		if (stp_btm->wmt_notify) {

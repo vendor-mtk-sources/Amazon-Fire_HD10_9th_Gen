@@ -47,6 +47,10 @@
 
 #define THRESHOLD_ENABLE_HIGHER_OCP	(2500*1000)
 
+#ifdef CONFIG_MT6370_PMU_IAICR_CALIBRATION
+#define IDME_OF_IAICR_CAL	"/idme/iaicr"
+#endif
+
 static bool dbg_log_en;
 module_param(dbg_log_en, bool, 0644);
 
@@ -146,6 +150,14 @@ struct mt6370_pmu_charger_data {
 	struct pinctrl_state *sgm2541_slave;
 	struct pinctrl_state *otg_enable;
 	struct pinctrl_state *otg_disable;
+
+#ifdef CONFIG_MT6370_PMU_IAICR_CALIBRATION
+	int iaicr_cal_1000ma;
+	int iaicr_cal_1800ma;
+	int iaicr_cal_3000ma;
+	bool support_iaicr_cal;
+	bool enable_iaicr_cal;
+#endif
 };
 
 /* These default values will be used if there's no property in dts */
@@ -1884,6 +1896,158 @@ static int mt6370_get_aicr(struct charger_device *chg_dev, u32 *aicr)
 	return ret;
 }
 
+#ifdef CONFIG_MT6370_PMU_IAICR_CALIBRATION
+static char *idme_get_iaicr_cal(void)
+{
+	struct device_node *ap = NULL;
+	char *iaicr_cal = NULL;
+
+	ap = of_find_node_by_path(IDME_OF_IAICR_CAL);
+	if (ap) {
+		iaicr_cal = (char *)of_get_property(ap, "value", NULL);
+		pr_info("%s: iaicr_cal %s\n", __func__, iaicr_cal);
+	} else {
+		pr_info("%s: Not find node %s.\n", __func__, IDME_OF_IAICR_CAL);
+	}
+
+	return iaicr_cal;
+}
+
+static void correct_iaicr_cal_data(int *iaicr_cal, int target_iaicr)
+{
+	int ma = *iaicr_cal;
+	int max_cal = 0;
+
+	/* Max. variation of mt6370 is ~14%. Calculate the corresponding
+	 * max. calibration value.
+	 */
+	max_cal = mult_frac(target_iaicr, 14, 100);
+	max_cal = roundup(max_cal, 50);
+
+	ma = clamp(ma, 0, max_cal);
+	*iaicr_cal = roundup(ma, 50);
+}
+
+static void mt6370_update_iaicr_cal_value(
+	struct mt6370_pmu_charger_data *chg_data)
+{
+	struct mt6370_pmu_chip *chip = NULL;
+	struct device *dev = NULL;
+
+	char *iaicr_cal = NULL;
+	char buf[24] = { 0 };
+	char *sepstr = NULL;
+	char *sepdata = NULL;
+	int err;
+	int iaicr_cal_1000ma = 0;
+	int iaicr_cal_1800ma = 0;
+	int iaicr_cal_3000ma = 0;
+
+	chip = chg_data->chip;
+	dev = chip->dev;
+
+	chg_data->iaicr_cal_1000ma = 0;
+	chg_data->iaicr_cal_1800ma = 0;
+	chg_data->iaicr_cal_3000ma = 0;
+	chg_data->support_iaicr_cal = false;
+	chg_data->enable_iaicr_cal = false;
+
+	iaicr_cal = idme_get_iaicr_cal();
+	if (iaicr_cal == NULL) {
+		/* There is no IAICR calibration data. */
+		dev_err(dev, "%s: Not support IAICR calibration.\n", __func__);
+		return;
+	}
+
+	/* IAICR calibration data is found. */
+	dev_info(dev, "%s: IAICR calibration raw data: %s\n",
+		__func__, iaicr_cal);
+
+	strcpy(buf, iaicr_cal);
+
+	sepstr = buf;
+
+	sepdata = strsep(&sepstr, ",");
+	if (sepdata == NULL || sepstr == NULL) {
+		dev_err(dev, "%s: Not find calibration data.\n", __func__);
+		goto out;
+	}
+	chg_data->support_iaicr_cal = true;
+	chg_data->enable_iaicr_cal = true;
+
+	err = kstrtoint(sepdata, 10, &iaicr_cal_1000ma);
+	if (err)
+		dev_err(dev, "%s: Can't parse IAICR calibration value for 1A\n",
+			__func__);
+	else
+		correct_iaicr_cal_data(&iaicr_cal_1000ma, 1000);
+
+	sepdata = strsep(&sepstr, ",");
+	if (sepdata == NULL || sepstr == NULL) {
+		dev_err(dev, "%s: Not find calibration data for 1.8A.\n",
+			__func__);
+		goto out;
+	}
+	err = kstrtoint(sepdata, 10, &iaicr_cal_1800ma);
+	if (err)
+		dev_err(dev, "%s: Can't parse IAICR calibration value for 1.8A\n",
+			__func__);
+	else
+		correct_iaicr_cal_data(&iaicr_cal_1800ma, 1800);
+
+	err = kstrtoint(sepstr, 10, &iaicr_cal_3000ma);
+	if (err)
+		dev_err(dev, "%s: Can't parse IAICR calibration value for 3A\n",
+			__func__);
+	else
+		correct_iaicr_cal_data(&iaicr_cal_3000ma, 3000);
+
+	chg_data->iaicr_cal_1000ma = iaicr_cal_1000ma;
+	chg_data->iaicr_cal_1800ma = iaicr_cal_1800ma;
+	chg_data->iaicr_cal_3000ma = iaicr_cal_3000ma;
+
+	dev_info(dev, "%s: Parsed IAICR calibration value:%d %d %d\n", __func__,
+		iaicr_cal_1000ma, iaicr_cal_1800ma, iaicr_cal_3000ma);
+out:
+	return;
+}
+
+static void mt6370_calibrate_aicr(struct mt6370_pmu_charger_data *chg_data,
+	uint32_t *uA)
+{
+	struct device *dev = chg_data->chip->dev;
+	uint32_t ma, calibrated_ma;
+
+	/* IAICR calibration is not enabled. */
+	if (!chg_data->support_iaicr_cal || !chg_data->enable_iaicr_cal ||
+		(*uA <= 500000))
+		return;
+
+	ma = clamp((int)*uA, MT6370_AICR_MIN, MT6370_AICR_MAX)/1000;
+
+	/* calculate calibrated ma */
+	ma = roundup(ma, 50);
+	calibrated_ma = mult_frac(ma,
+		(1800 + chg_data->iaicr_cal_1800ma), 1800);
+	calibrated_ma = roundup(calibrated_ma, 50);
+
+	calibrated_ma = min((int)calibrated_ma, MT6370_AICR_MAX/1000);
+
+	*uA = calibrated_ma * 1000;
+	dev_info(dev, "%s: ma:%d %d uA:%d\n", __func__, ma, calibrated_ma, *uA);
+}
+
+static int mt6370_enable_input_current_limit_calibration(
+	struct charger_device *chg_dev, bool enable)
+{
+	struct mt6370_pmu_charger_data *chg_data =
+		dev_get_drvdata(&chg_dev->dev);
+	if (chg_data->support_iaicr_cal)
+		chg_data->enable_iaicr_cal = enable;
+	return 0;
+}
+#endif
+
 static int mt6370_set_aicr(struct charger_device *chg_dev, u32 uA)
 {
 	int ret = 0;
@@ -1891,6 +2055,9 @@ static int mt6370_set_aicr(struct charger_device *chg_dev, u32 uA)
 		dev_get_drvdata(&chg_dev->dev);
 
 	mutex_lock(&chg_data->aicr_access_lock);
+#ifdef CONFIG_MT6370_PMU_IAICR_CALIBRATION
+	mt6370_calibrate_aicr(chg_data, &uA);
+#endif
 	ret = __mt6370_set_aicr(chg_data, uA);
 	mutex_unlock(&chg_data->aicr_access_lock);
 
@@ -3962,6 +4129,10 @@ static struct charger_ops mt6370_chg_ops = {
 	.safety_check = mt6370_safety_check,
 	.get_min_charging_current = mt6370_get_min_ichg,
 	.get_min_input_current = mt6370_get_min_aicr,
+#ifdef CONFIG_MT6370_PMU_IAICR_CALIBRATION
+	.enable_input_current_limit_calibration =
+		mt6370_enable_input_current_limit_calibration,
+#endif
 
 	/* Safety timer */
 	.enable_safety_timer = mt6370_enable_safety_timer,
@@ -4171,6 +4342,10 @@ static int mt6370_pmu_charger_probe(struct platform_device *pdev)
 			__func__);
 		goto err_chg_sw_workaround;
 	}
+
+#ifdef CONFIG_MT6370_PMU_IAICR_CALIBRATION
+	mt6370_update_iaicr_cal_value(chg_data);
+#endif
 
 	/* Register charger device */
 	chg_data->chg_dev = charger_device_register(

@@ -22,6 +22,9 @@
 #include "mtk_spm_vcore_dvfs.h"
 #include "mmdvfs_mgr.h"
 
+#ifdef CONFIG_AMZN_DDR_FREQ_TRACE
+#include <linux/amzn_rt_trace.h>
+#endif
 __weak void mmdvfs_notify_prepare_action(struct mmdvfs_prepare_action_event *event)
 {
 	vcorefs_crit("NOT SUPPORT MM DVFS NOTIFY\n");
@@ -337,6 +340,18 @@ int vcorefs_request_dvfs_opp(enum dvfs_kicker kicker, enum dvfs_opp opp)
 	krconf.opp = opp;
 	krconf.dvfs_opp = _get_dvfs_opp(pwrctrl, kicker, opp);
 
+#ifdef CONFIG_AMZN_DDR_FREQ_TRACE
+	{
+		u32 freq[4] = {3200, 3200, 2400, 1600};
+
+		if (opp >= 0 && opp < 4) {
+		amzn_rt_trace_tag(AMZN_RT_TRACE_TYPE_DDR,
+				  "freq",
+				  freq[opp],
+				  0);
+		}
+	}
+#endif
 	vcorefs_footprint(kicker, opp);
 
 	if (vcorefs_req_handler)

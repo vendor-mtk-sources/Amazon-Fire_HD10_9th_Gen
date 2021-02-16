@@ -1561,7 +1561,7 @@ int m4u_config_port_array_tee(unsigned char *port_array)
 	mutex_lock(&gM4u_port_tee);
 	param[0].mem.buffer = port_array;
 	param[0].mem.size = (M4U_PORT_NR + 1) / 2;
-	paramTypes = TZ_ParamTypes1(TZPT_VALUE_INPUT);
+	paramTypes = TZ_ParamTypes1(TZPT_MEM_INPUT);
 	ret = KREE_TeeServiceCall(m4u_session, M4U_TZCMD_CONFIG_PORT_ARRAY, paramTypes, param);
 	mutex_unlock(&gM4u_port_tee);
 

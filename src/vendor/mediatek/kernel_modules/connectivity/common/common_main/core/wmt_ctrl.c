@@ -1167,8 +1167,7 @@ static INT32 wmt_ctrl_trg_assert(P_WMT_CTRL_DATA pWmtCtrlData)
 
 		iRet = mtk_wcn_stp_wmt_trg_assert();
 		if (iRet == 0) {
-			wmt_lib_set_host_assert_info(drv_type, reason, 1);
-			stp_dbg_set_keyword(keyword);
+			wmt_lib_set_host_assert_info(drv_type, reason, 1, keyword);
 		}
 	} else
 		WMT_INFO_FUNC("do trigger assert & chip reset in stp noack\n");

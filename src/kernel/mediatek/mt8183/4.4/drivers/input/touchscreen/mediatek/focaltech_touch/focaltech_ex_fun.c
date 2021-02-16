@@ -179,7 +179,6 @@ static ssize_t fts_debug_write(
 
 	case PROC_HW_RESET:
 		snprintf(tmp, PROC_BUF_SIZE, "%s", writebuf + 1);
-		tmp[buflen - 1] = '\0';
 		if (strncmp(tmp, "focal_driver", 12) == 0) {
 			FTS_INFO("APK execute HW Reset");
 			fts_reset_proc(0);
@@ -447,7 +446,6 @@ static int fts_debug_write(
 
 	case PROC_HW_RESET:
 		snprintf(tmp, PROC_BUF_SIZE, "%s", writebuf + 1);
-		tmp[buflen - 1] = '\0';
 		if (strncmp(tmp, "focal_driver", 12) == 0) {
 			FTS_INFO("APK execute HW Reset");
 			fts_reset_proc(0);
@@ -1004,7 +1002,6 @@ static ssize_t fts_fwupgradebin_store(
 	}
 	memset(fwname, 0, sizeof(fwname));
 	snprintf(fwname, FILE_NAME_LENGTH, "%s", buf);
-	fwname[count - 1] = '\0';
 
 	FTS_INFO("upgrade with bin file through sysfs node");
 	mutex_lock(&input_dev->mutex);
@@ -1036,7 +1033,6 @@ static ssize_t fts_fwforceupg_store(
 	}
 	memset(fwname, 0, sizeof(fwname));
 	snprintf(fwname, FILE_NAME_LENGTH, "%s", buf);
-	fwname[count - 1] = '\0';
 
 	FTS_INFO("force upgrade through sysfs node");
 	mutex_lock(&input_dev->mutex);

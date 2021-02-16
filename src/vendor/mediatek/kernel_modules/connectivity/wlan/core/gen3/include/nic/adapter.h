@@ -777,7 +777,6 @@ typedef struct _WIFI_VAR_T {
 
 #if CFG_SUPPORT_ANT_DIVERSITY
 	struct AIS_ANT_SWITCH_INFO_T rAisAntSwitchInfo;
-	struct AIS_ANT_SWITCH_STATISTIC_T rAisAntSwitchStatistic;
 #endif
 } WIFI_VAR_T, *P_WIFI_VAR_T;	/* end of _WIFI_VAR_T */
 
@@ -868,6 +867,7 @@ struct _ADAPTER_T {
 
 	P_BSS_INFO_T aprBssInfo[HW_BSSID_NUM + 1];
 	P_BSS_INFO_T prAisBssInfo;
+	BSS_INFO_T rBssInfoForSavingFwBSSParam;       /* rBssInfoForSavingFwBSSParam */
 
 #if CFG_TCP_IP_CHKSUM_OFFLOAD
 	UINT_32 u4CSUMFlags;
@@ -1103,10 +1103,6 @@ struct _ADAPTER_T {
 	struct WLAN_DEBUG_INFO rDebugInfo;
 #if CFG_DBG_MGT_BUF
 	LINK_T rMemTrackLink;
-#endif
-#if CFG_SUPPORT_WAKEUP_STATISTICS
-	WAKEUP_STATISTIC arWakeupStatistic[WAKEUP_TYPE_NUM];
-	int wake_event_count[EVENT_ID_END];
 #endif
 	unsigned char dtim_skip_count;
 #if CFG_SUPPORT_EXCEPTION_STATISTICS

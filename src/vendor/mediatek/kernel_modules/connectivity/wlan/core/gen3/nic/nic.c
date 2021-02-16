@@ -76,6 +76,10 @@ const ECO_INFO_T g_arEcoVersionTable[] = {
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+	extern WAKEUP_STATISTIC g_arWakeupStatistic[WAKEUP_TYPE_NUM];
+	extern uint32_t g_wake_event_count[EVENT_ID_END];
+#endif
 
 static INT_EVENT_MAP_T arIntEventMapTable[] = {
 	{WHISR_ABNORMAL_INT, INT_EVENT_ABNORMAL},
@@ -4128,19 +4132,19 @@ WLAN_STATUS nicSetUapsdParam(IN P_ADAPTER_T prAdapter,
 #if CFG_SUPPORT_WAKEUP_STATISTICS
 INT_32 nicUpdateWakeupStatistics(P_ADAPTER_T prAdapter, WAKEUP_TYPE intType)
 {
-	P_WAKEUP_STATISTIC *prWakeupSta = &prAdapter->arWakeupStatistic[intType];
+	P_WAKEUP_STATISTIC *prWakeupSta = &g_arWakeupStatistic[intType];
 	if (glWlanGetSuspendFlag() == 0)
 		return 0;
-	prWakeupSta->u2Count++;
+	prWakeupSta->u4Count++;
 	glWlanClearSuspendFlag();
-	if (prWakeupSta->u2Count % 100 == 0) {
+	if (prWakeupSta->u4Count % 100 == 0) {
 		OS_SYSTIME rCurrent;
-		if (prWakeupSta->u2Count > 0) {
+		if (prWakeupSta->u4Count > 0) {
 			GET_CURRENT_SYSTIME(&rCurrent);
-			prWakeupSta->u2TimePerHundred = rCurrent-prWakeupSta->rStartTime;
+			prWakeupSta->u4TimePerHundred = rCurrent-prWakeupSta->rStartTime;
 		}
 		GET_CURRENT_SYSTIME(&prWakeupSta->rStartTime)
-		DBGLOG(RX, INFO, "wakeup frequency: %d", prWakeupSta->u2TimePerHundred);
+		DBGLOG(RX, INFO, "wakeup frequency: %u", prWakeupSta->u4TimePerHundred);
 	}
 	return 1;
 }

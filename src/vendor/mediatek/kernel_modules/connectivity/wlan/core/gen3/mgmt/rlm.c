@@ -166,8 +166,69 @@ VOID rlmFsmEventUninit(P_ADAPTER_T prAdapter)
 		 */
 		rlmBssReset(prAdapter, prBssInfo);
 	}
-	rlmFreeMeasurementResources(prAdapter);
+	rlmCancelRadioMeasurement(prAdapter);
 }
+
+
+/* fos_change begin */
+/*----------------------------------------------------------------------------*/
+/*!
+* \brief For association request, supported channels
+*
+* \param[in]
+*
+* \return none
+*/
+/*----------------------------------------------------------------------------*/
+void rlmReqGenerateSupportedChIE(
+	P_ADAPTER_T prAdapter,
+	P_MSDU_INFO_T prMsduInfo)
+{
+	UINT_8 *pucBuffer;
+	P_BSS_INFO_T prBssInfo;
+	P_DOMAIN_INFO_ENTRY prDomainInfo;
+	P_DOMAIN_SUBBAND_INFO prSubband;
+	UINT_8 ucIdx = 0;
+	UINT_8 ucIEIdx = 0;
+
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prMsduInfo->ucBssIndex);
+
+	/* We should add supported channels IE in assoc/reassoc request
+	 * if the spectrum management bit is set to 1 in Capability Info
+	 * field, or the connection will be rejected by Marvell APs in
+	 * some TGn items. (e.g. 5.2.3). Spectrum management related
+	 * feature (802.11h) is for 5G band.
+	 */
+	if (!prBssInfo)
+		return;
+
+	pucBuffer = (UINT_8 *)
+		(prMsduInfo->prPacket + prMsduInfo->u2FrameLength);
+
+	SUPPORTED_CHANNELS_IE(pucBuffer)->ucId = ELEM_ID_SUP_CHS;
+
+	/* If no matched country code, the final one will be used */
+	prDomainInfo = rlmDomainGetDomainInfo(prAdapter);
+	ASSERT(prDomainInfo);
+
+	for (ucIdx = 0; ucIdx < MAX_SUBBAND_NUM; ucIdx++) {
+		prSubband = &prDomainInfo->rSubBand[ucIdx];
+
+		if (prSubband->ucBand == BAND_NULL || prSubband->ucBand >= BAND_NUM ||
+			prSubband->ucNumChannels == 0 ||
+		    (prSubband->ucBand == BAND_5G && !prAdapter->fgEnable5GBand))
+			continue;
+
+		SUPPORTED_CHANNELS_IE(pucBuffer)->ucChannelNum[ucIEIdx++] =
+			prSubband->ucFirstChannelNum;
+		SUPPORTED_CHANNELS_IE(pucBuffer)->ucChannelNum[ucIEIdx++] =
+			prSubband->ucNumChannels;
+	}
+
+	SUPPORTED_CHANNELS_IE(pucBuffer)->ucLength = ucIEIdx;
+
+	prMsduInfo->u2FrameLength += IE_SIZE(pucBuffer);
+} /* fos_change begin */
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1428,20 +1489,6 @@ static UINT_8 rlmRecIeInfoForClient(P_ADAPTER_T prAdapter, P_BSS_INFO_T prBssInf
 		P_BSS_DESC_T prBssDesc;
 		PARAM_SSID_T rSsid;
 
-		prBssInfo->ucPrimaryChannel = prCsaParam->ucNewChannel;
-		COPY_SSID(rSsid.aucSsid, rSsid.u4SsidLen, prBssInfo->aucSSID, prBssInfo->ucSSIDLen);
-		prBssDesc = scanSearchBssDescByBssidAndSsid(prAdapter, prBssInfo->aucBSSID, TRUE, &rSsid);
-
-		if (prBssDesc) {
-			DBGLOG(RLM, INFO, "BSS " MACSTR " Desc found, channel update [%d]->[%d]\n",
-			       MAC2STR(prBssInfo->aucBSSID),
-			       prBssDesc->ucChannelNum,
-			       prCsaParam->ucNewChannel);
-			prBssDesc->ucChannelNum = prCsaParam->ucNewChannel;
-		} else {
-			DBGLOG(RLM, INFO, "BSS " MACSTR " Desc is not found\n", MAC2STR(prBssInfo->aucBSSID));
-		}
-
 		if (prCsaParam->fgHasWideBandIE) {
 			prBssInfo->ucVhtChannelWidth = prCsaParam->ucNewVhtBw;
 			prBssInfo->ucVhtChannelFrequencyS1 = prCsaParam->ucNewVhtS1;
@@ -1456,6 +1503,40 @@ static UINT_8 rlmRecIeInfoForClient(P_ADAPTER_T prAdapter, P_BSS_INFO_T prBssInf
 			prBssInfo->eBssSCO = prCsaParam->eNewSCO;
 		else
 			prBssInfo->eBssSCO = CHNL_EXT_SCN;
+
+		prBssInfo->ucPrimaryChannel = prCsaParam->ucNewChannel;
+		COPY_SSID(rSsid.aucSsid, rSsid.u4SsidLen, prBssInfo->aucSSID, prBssInfo->ucSSIDLen);
+		prBssDesc = scanSearchBssDescByBssidAndSsid(prAdapter, prBssInfo->aucBSSID, TRUE, &rSsid);
+
+		if (prBssDesc) {
+			DBGLOG(RLM, INFO, "BSS " MACSTR " Desc found, channel update [%d]->[%d]\n",
+			       MAC2STR(prBssInfo->aucBSSID),
+			       prBssDesc->ucChannelNum,
+			       prCsaParam->ucNewChannel);
+			prBssDesc->ucChannelNum = prCsaParam->ucNewChannel;
+			prBssDesc->ucCenterFreqS1 = prBssInfo->ucVhtChannelFrequencyS1;
+			prBssDesc->ucCenterFreqS2 = prBssInfo->ucVhtChannelFrequencyS2;
+			prBssDesc->eChannelWidth = prBssInfo->ucVhtChannelWidth;
+			prBssDesc->eSco = prBssInfo->eBssSCO;
+
+			if (!rlmDomainIsValidRfSetting(prAdapter, prBssDesc->eBand, prBssDesc->ucChannelNum, prBssDesc->eSco,
+				prBssDesc->eChannelWidth, prBssDesc->ucCenterFreqS1,
+				prBssDesc->ucCenterFreqS2)) {
+				/* Error Handling for Non-predicted IE - Fixed to set 20MHz */
+				prBssDesc->eChannelWidth = CW_20_40MHZ;
+				prBssDesc->ucCenterFreqS1 = 0;
+				prBssDesc->ucCenterFreqS2 = 0;
+				prBssDesc->eSco = CHNL_EXT_SCN;
+			}
+		} else {
+			DBGLOG(RLM, INFO, "BSS " MACSTR " Desc is not found\n", MAC2STR(prBssInfo->aucBSSID));
+		}
+
+		if (prBssDesc) {
+			kalIndicateChannelSwitch(prAdapter->prGlueInfo,
+				prBssInfo->eBssSCO,
+				prBssDesc->ucChannelNum);
+		}
 
 		/* Reset the CSA params for next Channel Switch */
 		kalMemZero(prCsaParam, sizeof(*prCsaParam));
@@ -1674,6 +1755,39 @@ rlmRecBcnFromNeighborForClient(P_ADAPTER_T prAdapter,
 
 	return FALSE;
 }
+/*----------------------------------------------------------------------------*/
+/*!
+* \brief check prbssinfo whether or not change.
+*
+* \param[in]
+*
+* \return true or false
+*/
+/*----------------------------------------------------------------------------*/
+
+BOOLEAN rlmIsBssParameterChanged(P_ADAPTER_T prAdapter,P_BSS_INFO_T prBssInfo)
+{
+	ASSERT(prAdapter);
+	if (prBssInfo == NULL)
+		return FALSE;
+	return(!(prAdapter->rBssInfoForSavingFwBSSParam.fgUseShortSlotTime == prBssInfo->fgUseShortPreamble &&
+		prAdapter->rBssInfoForSavingFwBSSParam.eBand == prBssInfo->eBand &&
+		prAdapter->rBssInfoForSavingFwBSSParam.ucPrimaryChannel == prBssInfo->ucPrimaryChannel &&
+		prAdapter->rBssInfoForSavingFwBSSParam.eBssSCO == prBssInfo->eBssSCO &&
+		prAdapter->rBssInfoForSavingFwBSSParam.fgErpProtectMode == prBssInfo->fgErpProtectMode &&
+		prAdapter->rBssInfoForSavingFwBSSParam.eHtProtectMode == prBssInfo->eHtProtectMode &&
+		prAdapter->rBssInfoForSavingFwBSSParam.eGfOperationMode == prBssInfo->eGfOperationMode &&
+		prAdapter->rBssInfoForSavingFwBSSParam.eRifsOperationMode == prBssInfo->eRifsOperationMode &&
+		prAdapter->rBssInfoForSavingFwBSSParam.u2HtOpInfo2 == prBssInfo->u2HtOpInfo2 &&
+		prAdapter->rBssInfoForSavingFwBSSParam.u2HtOpInfo3 == prBssInfo->u2HtOpInfo3 &&
+		prAdapter->rBssInfoForSavingFwBSSParam.ucHtOpInfo1 == prBssInfo->ucHtOpInfo1 &&
+		prAdapter->rBssInfoForSavingFwBSSParam.fgUseShortPreamble == prBssInfo->fgUseShortPreamble &&
+		prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelWidth == prBssInfo->ucVhtChannelWidth &&
+		prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelFrequencyS1 == prBssInfo->ucVhtChannelFrequencyS1 &&
+		prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelFrequencyS2 == prBssInfo->ucVhtChannelFrequencyS2 &&
+		prAdapter->rBssInfoForSavingFwBSSParam.u2BSSBasicRateSet == prBssInfo->u2BSSBasicRateSet));
+}
+
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1706,7 +1820,6 @@ rlmRecBcnInfoForClient(P_ADAPTER_T prAdapter,
 		return FALSE;
 	}
 #endif
-
 	/* Handle change of slot time */
 	prBssInfo->u2CapInfo = ((P_WLAN_BEACON_FRAME_T) (prSwRfb->pvHeader))->u2CapInfo;
 	/*
@@ -1718,7 +1831,38 @@ rlmRecBcnInfoForClient(P_ADAPTER_T prAdapter,
 
 	rlmRecIeInfoForClient(prAdapter, prBssInfo, pucIE, u2IELength);
 
-	return TRUE;
+	return rlmIsBssParameterChanged(prAdapter,prBssInfo);
+}
+/*----------------------------------------------------------------------------*/
+/*!
+* \brief
+*
+* \param[in]
+*
+* \return none
+*/
+/*----------------------------------------------------------------------------*/
+
+VOID rlmSaveBssInfo(P_ADAPTER_T prAdapter,P_BSS_INFO_T prBssInfo)
+{
+	ASSERT(prAdapter);
+	if(prBssInfo == NULL)
+		return;
+	prAdapter->rBssInfoForSavingFwBSSParam.eBand = prBssInfo->eBand;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucPrimaryChannel = prBssInfo->ucPrimaryChannel;
+	prAdapter->rBssInfoForSavingFwBSSParam.eBssSCO = prBssInfo->eBssSCO;
+	prAdapter->rBssInfoForSavingFwBSSParam.fgErpProtectMode = prBssInfo->fgErpProtectMode;
+	prAdapter->rBssInfoForSavingFwBSSParam.eHtProtectMode = prBssInfo->eHtProtectMode;
+	prAdapter->rBssInfoForSavingFwBSSParam.eGfOperationMode = prBssInfo->eGfOperationMode;
+	prAdapter->rBssInfoForSavingFwBSSParam.eRifsOperationMode = prBssInfo->eRifsOperationMode;
+	prAdapter->rBssInfoForSavingFwBSSParam.u2HtOpInfo2 = prBssInfo->u2HtOpInfo2;
+	prAdapter->rBssInfoForSavingFwBSSParam.u2HtOpInfo3 = prBssInfo->u2HtOpInfo3;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucHtOpInfo1 = prBssInfo->ucHtOpInfo1;
+	prAdapter->rBssInfoForSavingFwBSSParam.fgUseShortPreamble = prBssInfo->fgUseShortPreamble;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelWidth = prBssInfo->ucVhtChannelWidth;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelFrequencyS1 = prBssInfo->ucVhtChannelFrequencyS1;
+	prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelFrequencyS2 = prBssInfo->ucVhtChannelFrequencyS2;
+	prAdapter->rBssInfoForSavingFwBSSParam.u2BSSBasicRateSet = prBssInfo->u2BSSBasicRateSet;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1787,6 +1931,7 @@ VOID rlmProcessBcn(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb, PUINT_8 pucIE, UIN
 			if (fgNewParameter) {
 				rlmSyncOperationParams(prAdapter, prBssInfo);
 				fgNewParameter = FALSE;
+				rlmSaveBssInfo(prAdapter,prBssInfo);
 			}
 		}		/* end of IS_BSS_ACTIVE() */
 	}
@@ -2525,22 +2670,6 @@ VOID rlmProcessSpecMgtAction(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb)
 			P_BSS_DESC_T prBssDesc;
 			PARAM_SSID_T rSsid;
 
-			prBssInfo->ucPrimaryChannel = prCsaParam->ucNewChannel;
-			COPY_SSID(rSsid.aucSsid, rSsid.u4SsidLen, prBssInfo->aucSSID, prBssInfo->ucSSIDLen);
-			prBssDesc = scanSearchBssDescByBssidAndSsid(prAdapter, prStaRec->aucMacAddr, TRUE, &rSsid);
-
-			if (prBssDesc) {
-				DBGLOG(RLM, INFO,
-				       "BSS " MACSTR " Desc found, channel update [%d]->[%d]\n",
-				       MAC2STR(prBssInfo->aucBSSID),
-				       prBssDesc->ucChannelNum,
-				       prCsaParam->ucNewChannel);
-				prBssDesc->ucChannelNum = prCsaParam->ucNewChannel;
-			} else {
-				DBGLOG(RLM, INFO,
-				       "BSS " MACSTR " Desc is not found\n", MAC2STR(prBssInfo->aucBSSID));
-			}
-
 			if (prCsaParam->fgHasWideBandIE) {
 				prBssInfo->ucVhtChannelWidth = prCsaParam->ucNewVhtBw;
 				prBssInfo->ucVhtChannelFrequencyS1 = prCsaParam->ucNewVhtS1;
@@ -2551,11 +2680,48 @@ VOID rlmProcessSpecMgtAction(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb)
 				prBssInfo->ucVhtChannelFrequencyS2 = 0;
 			}
 
+			prBssInfo->ucPrimaryChannel = prCsaParam->ucNewChannel;
 			if (prCsaParam->fgHasSCOIE)
 				prBssInfo->eBssSCO = prCsaParam->eNewSCO;
 			else
 				prBssInfo->eBssSCO = CHNL_EXT_SCN;
 
+			if (!rlmDomainIsValidRfSetting(prAdapter, prBssInfo->eBand,
+				prBssInfo->ucPrimaryChannel, prBssInfo->eBssSCO,
+				prBssInfo->ucVhtChannelWidth, prBssInfo->ucVhtChannelFrequencyS1,
+				prBssInfo->ucVhtChannelFrequencyS2)) {
+				/*Error Handling for Non-predicted IE - Fixed to set 20MHz */
+				prBssInfo->ucVhtChannelWidth = CW_20_40MHZ;
+				prBssInfo->ucVhtChannelFrequencyS1 = 0;
+				prBssInfo->ucVhtChannelFrequencyS2 = 0;
+				prBssInfo->eBssSCO = CHNL_EXT_SCN;
+				prBssInfo->ucHtOpInfo1 &= ~(HT_OP_INFO1_SCO | HT_OP_INFO1_STA_CHNL_WIDTH);
+			}
+
+			COPY_SSID(rSsid.aucSsid, rSsid.u4SsidLen, prBssInfo->aucSSID, prBssInfo->ucSSIDLen);
+			prBssDesc = scanSearchBssDescByBssidAndSsid(prAdapter, prStaRec->aucMacAddr, TRUE, &rSsid);
+
+			if (prBssDesc) {
+				DBGLOG(RLM, INFO,
+				       "BSS " MACSTR " Desc found, channel update [%d]->[%d]\n",
+				       MAC2STR(prBssInfo->aucBSSID),
+				       prBssDesc->ucChannelNum,
+				       prCsaParam->ucNewChannel);
+				prBssDesc->ucChannelNum = prCsaParam->ucNewChannel;
+				prBssDesc->ucCenterFreqS1 = prBssInfo->ucVhtChannelFrequencyS1;
+				prBssDesc->ucCenterFreqS2 = prBssInfo->ucVhtChannelFrequencyS2;
+				prBssDesc->eChannelWidth = prBssInfo->ucVhtChannelWidth;
+				prBssDesc->eSco = prBssInfo->eBssSCO;
+			} else {
+				DBGLOG(RLM, INFO,
+				       "BSS " MACSTR " Desc is not found\n", MAC2STR(prBssInfo->aucBSSID));
+			}
+
+			if (prBssDesc) {
+				kalIndicateChannelSwitch(prAdapter->prGlueInfo,
+					prBssInfo->eBssSCO,
+					prBssDesc->ucChannelNum);
+			}
 			/* Reset the CSA params for next Channel Switch */
 			kalMemZero(prCsaParam, sizeof(*prCsaParam));
 
@@ -2805,7 +2971,7 @@ schedule_next:
 				prCurrReq = prRmReq->prCurrMeasElem = (P_IE_MEASUREMENT_REQ_T)prRmReq->pucReqIeBuf;
 				prRmReq->u2RemainReqLen = prRmReq->u2ReqIeBufLen;
 			} else {
-				rlmFreeMeasurementResources(prAdapter);
+				rlmCancelRadioMeasurement(prAdapter);
 				DBGLOG(RLM, INFO, "Radio Measurement done\n");
 				return;
 			}
@@ -2840,6 +3006,16 @@ schedule_next:
 				rlmTxRadioMeasurementReport(prAdapter);
 				pucReportFrame = prRmRep->pucReportFrameBuff + prRmRep->u2ReportFrameLen;
 			}
+
+			/* rlmTxRadioMeasureMentReport fail will not reset u2ReportFrameLen.
+			 * It will cause to KE.
+			 */
+			if (u2IeSize + prRmRep->u2ReportFrameLen > RM_REPORT_FRAME_MAX_LENGTH) {
+				DBGLOG(RLM, WARN, "u2IeSize:0x%x, FrameLen:0x%x\n", u2IeSize,
+					prRmRep->u2ReportFrameLen);
+				break;
+			}
+
 			kalMemCopy(pucReportFrame, prReportEntry->aucMeasReport, u2IeSize);
 			pucReportFrame += u2IeSize;
 			prRmRep->u2ReportFrameLen += u2IeSize;
@@ -2861,7 +3037,7 @@ schedule_next:
 			} else {
 				/* don't free radio measurement resource due to TSM is running */
 				if (!wmmTsmIsOngoing(prAdapter)) {
-					rlmFreeMeasurementResources(prAdapter);
+					rlmCancelRadioMeasurement(prAdapter);
 					DBGLOG(RLM, INFO, "Radio Measurement done\n");
 				}
 				return;
@@ -3199,6 +3375,7 @@ VOID rlmProcessRadioMeasurementRequest(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb
 	struct RADIO_MEASUREMENT_REQ_PARAMS *prRmReqParam = NULL;
 	struct RADIO_MEASUREMENT_REPORT_PARAMS *prRmRepParam = NULL;
 	enum RM_REQ_PRIORITY eNewPriority;
+	P_STA_RECORD_T prStaRec = NULL;
 
 	ASSERT(prAdapter);
 	ASSERT(prSwRfb);
@@ -3209,6 +3386,13 @@ VOID rlmProcessRadioMeasurementRequest(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb
 
 	if (!rlmRmFrameIsValid(prSwRfb))
 		return;
+
+	prStaRec = prAdapter->prAisBssInfo->prStaRecOfAP;
+	if (!prStaRec) {
+		DBGLOG(RLM, WARN, "StaRec of Ais is NULL, ignore the Measurement\n");
+		return;
+	}
+
 	DBGLOG(RLM, INFO, "RM Request From %pM, DialogToken %d\n",
 			prRmReqFrame->aucSrcAddr, prRmReqFrame->ucDialogToken);
 	eNewPriority = rlmGetRmRequestPriority(prRmReqFrame->aucDestAddr);
@@ -3222,7 +3406,7 @@ VOID rlmProcessRadioMeasurementRequest(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb
 		DBGLOG(RLM, INFO, "Old RM is on-going, cancel it first\n");
 		rlmTxRadioMeasurementReport(prAdapter);
 		wmmRemoveAllTsmMeasurement(prAdapter, FALSE);
-		rlmFreeMeasurementResources(prAdapter);
+		rlmCancelRadioMeasurement(prAdapter);
 	}
 	prRmReqParam->fgRmIsOngoing = TRUE;
 	/* Step1: Save Measurement Request Params */
@@ -3335,12 +3519,16 @@ VOID rlmFillRrmCapa(PUINT_8 pucCapa)
 VOID rlmGeneratePowerCapIE(IN P_ADAPTER_T prAdapter, IN P_MSDU_INFO_T prMsduInfo)
 {
 	P_IE_POWER_CAP_T prPwrCap = NULL;
-	UINT_8 ucChannel = 0;
+	P_BSS_INFO_T prBssInfo;
 
 	ASSERT(prAdapter);
 	ASSERT(prMsduInfo);
 
-	ucChannel = prAdapter->rWifiVar.rAisFsmInfo.prTargetBssDesc->ucChannelNum;
+	/* fos_change begin */
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prMsduInfo->ucBssIndex);
+	if (!prBssInfo)
+		return; /* fos_change end */
+
 	prPwrCap = (P_IE_POWER_CAP_T)
 	    (((PUINT_8) prMsduInfo->prPacket) + prMsduInfo->u2FrameLength);
 	prPwrCap->ucId = ELEM_ID_PWR_CAP;

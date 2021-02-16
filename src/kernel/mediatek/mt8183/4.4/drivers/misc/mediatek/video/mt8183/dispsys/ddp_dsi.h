@@ -212,6 +212,17 @@ extern int mipi_clk_change(int msg, int en);
 unsigned int _is_power_on_status(enum DISP_MODULE_ENUM module);
 
 
+void ddp_dsi_write_lcm_register_cmdq(enum DISP_MODULE_ENUM module,
+	struct cmdqRecStruct *cmdq,
+	struct LCM_setting_table_V4 *para_tbl,
+	unsigned int index,
+	unsigned char force_update);
+extern int ddp_dsi_read_cabc_cmdq(enum DISP_MODULE_ENUM module,
+	cmdqBackupSlotHandle *read_Slot,
+	struct cmdqRecStruct *cmdq_trigger_handle,
+	struct LCM_setting_table_V4 *para_tbl,
+	unsigned int index);
+
 extern int ddp_dsi_read_lcm_register_cmdq(enum DISP_MODULE_ENUM module,
 	cmdqBackupSlotHandle *read_Slot,
 	struct cmdqRecStruct *cmdq_trigger_handle,
@@ -222,7 +233,22 @@ void DSI_set_cmdq_V3(enum DISP_MODULE_ENUM module, struct cmdqRecStruct *cmdq,
 
 extern void primary_display_set_backlight_mode_by_cmdq(LCM_setting_table_V3 *para_tbl, unsigned int size,
 				  unsigned char force_update);
-
+extern void primary_display_write_lcm_cmdq(
+	struct LCM_setting_table_V4 *para_tbl,
+	unsigned int size,
+	unsigned char force_update);
+extern int primary_display_read_lcm_cmdq(
+	struct LCM_setting_table_V4 *para_tbl,
+	unsigned int size,
+	unsigned char force_update);
+extern int write_lcm_lp_by_cmdq(
+	struct LCM_setting_table_V4 *para_tbl,
+	unsigned int size,
+	unsigned char force_update);
+extern int read_lcm_lp_by_cmdq(
+	struct LCM_setting_table_V4 *para_tbl,
+	unsigned int size,
+	unsigned char force_update);
 
 #ifdef __cplusplus
 }

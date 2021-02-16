@@ -68,6 +68,10 @@ static PUINT_8 apucDebugScanState[SCAN_STATE_NUM] = {
 
 /*lint -restore */
 #endif /* DBG */
+#ifdef ENABLED_IN_ENGUSERDEBUG
+extern  enum UT_TRIGGER_CHIP_RESET trChipReset;
+#endif
+
 
 /*******************************************************************************
 *                                 M A C R O S
@@ -164,6 +168,15 @@ VOID scnFsmSteps(IN P_ADAPTER_T prAdapter, IN ENUM_SCAN_STATE_T eNextState)
 				scnSendScanReqV3(prAdapter);
 			cnmTimerStartTimer(prAdapter, &prScanInfo->rScanDoneTimer,
 					   SEC_TO_MSEC(AIS_SCN_DONE_TIMEOUT_SEC));
+			/*record timestamp when scan start*/
+			GET_CURRENT_SYSTIME(&prScanInfo->u4ScanStartTime);
+#ifdef ENABLED_IN_ENGUSERDEBUG
+			if (trChipReset == TRIGGER_RESET_SCAN_TIMEOUT) {
+				DBGLOG(SCN, ERROR, "trigger chipreset scnScanDoneTimeout \n");
+				cnmTimerStartTimer(prAdapter, &prScanInfo->rScanDoneTimer, 300);
+			}
+#endif
+
 			/* prScanInfo->ucScanDoneTimeoutCnt = 0; */
 			break;
 
@@ -989,6 +1002,7 @@ VOID scnEventScanDone(IN P_ADAPTER_T prAdapter, IN P_EVENT_SCAN_DONE prScanDone,
 {
 	P_SCAN_INFO_T prScanInfo;
 	P_SCAN_PARAM_T prScanParam;
+	OS_SYSTIME currentTime;
 
 	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
 	prScanParam = &prScanInfo->rScanParam;
@@ -1041,6 +1055,9 @@ VOID scnEventScanDone(IN P_ADAPTER_T prAdapter, IN P_EVENT_SCAN_DONE prScanDone,
 	}
 
 	if (prScanInfo->eCurrentState == SCAN_STATE_SCANNING && prScanDone->ucSeqNum == prScanParam->ucSeqNum) {
+		/*record total scan time duration*/
+		GET_CURRENT_SYSTIME(&currentTime);
+		prScanInfo->u4TotalScanTime += (currentTime - prScanInfo->u4ScanStartTime);
 		/* generate scan-done event for caller */
 		scnFsmGenerateScanDoneMsg(prAdapter, prScanParam->ucSeqNum, prScanParam->ucBssIndex, SCAN_STATUS_DONE);
 
@@ -2171,6 +2188,12 @@ VOID scnScanDoneTimeout(IN P_ADAPTER_T prAdapter, ULONG ulParamPtr)
 	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
 
 	DBGLOG(SCN, WARN, "scnScanDoneTimeout %d \n", prScanInfo->ucScanDoneTimeoutCnt);
+#ifdef ENABLED_IN_ENGUSERDEBUG
+	if (trChipReset == TRIGGER_RESET_SCAN_TIMEOUT) {
+		prScanInfo->ucScanDoneTimeoutCnt = SCAN_DONE_TIMEOUT_THRESHOLD;
+		trChipReset = TRIGGER_RESET_START;
+	}
+#endif
 
 	prScanInfo->ucScanDoneTimeoutCnt++;
 	/* whole chip reset check */

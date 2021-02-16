@@ -235,6 +235,18 @@ int charger_dev_get_min_input_current(struct charger_device *charger_dev, u32 *u
 }
 EXPORT_SYMBOL(charger_dev_get_min_input_current);
 
+int charger_dev_enable_input_current_limit_calibration(
+	struct charger_device *charger_dev, bool enable)
+{
+	if (charger_dev != NULL && charger_dev->ops != NULL &&
+		charger_dev->ops->enable_input_current_limit_calibration)
+		return charger_dev->ops->enable_input_current_limit_calibration(
+					charger_dev, enable);
+
+	return -ENOTSUPP;
+}
+EXPORT_SYMBOL(charger_dev_enable_input_current_limit_calibration);
+
 int charger_dev_set_eoc_current(struct charger_device *charger_dev, u32 uA)
 {
 	if (charger_dev != NULL && charger_dev->ops != NULL && charger_dev->ops->set_eoc_current)
@@ -568,7 +580,7 @@ EXPORT_SYMBOL(wireless_charger_dev_set_vout_en);
 int wireless_charger_dev_set_wpc_en(struct charger_device *chg_dev, bool en)
 {
 	if (chg_dev != NULL && chg_dev->ops != NULL &&
-			chg_dev->ops->set_vout_en)
+			chg_dev->ops->set_wpc_en)
 		return chg_dev->ops->set_wpc_en(chg_dev, en);
 
 	return -ENOTSUPP;

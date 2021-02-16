@@ -859,10 +859,13 @@ requeue_req:
 		usb_ep_dequeue(dev->ep_out, req);
 		goto done;
 	}
+	spin_lock_irq(&dev->lock);
 	if (dev->state == STATE_BUSY) {
 		/* If we got a 0-len packet, throw it back and try again. */
-		if (req->actual == 0)
+		if (req->actual == 0) {
+			spin_unlock_irq(&dev->lock);
 			goto requeue_req;
+		}
 
 		if (likely(!cust_dump)) {
 			static DEFINE_RATELIMIT_STATE(ratelimit, 1 * HZ, 5);
@@ -879,6 +882,7 @@ requeue_req:
 			r = -EFAULT;
 	} else
 		r = -EIO;
+	spin_unlock_irq(&dev->lock);
 
 done:
 	spin_lock_irq(&dev->lock);
@@ -1972,6 +1976,10 @@ mtp_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	struct usb_request *req;
 	int i;
 
+	spin_lock_irq(&dev->lock);
+	dev->state = STATE_OFFLINE;
+	spin_unlock_irq(&dev->lock);
+
 	mtp_string_defs[INTERFACE_STRING_INDEX].id = 0;
 	while ((req = mtp_req_get(dev, &dev->tx_idle)))
 		mtp_request_free(req, dev->ep_in);
@@ -1979,7 +1987,7 @@ mtp_function_unbind(struct usb_configuration *c, struct usb_function *f)
 		mtp_request_free(dev->rx_req[i], dev->ep_out);
 	while ((req = mtp_req_get(dev, &dev->intr_idle)))
 		mtp_request_free(req, dev->ep_intr);
-	dev->state = STATE_OFFLINE;
+
 	kfree(f->os_desc_table);
 	f->os_desc_n = 0;
 }

@@ -1109,7 +1109,8 @@ static void ion_buffer_sync_for_device(struct ion_buffer *buffer,
 
 static int ion_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
-	struct ion_buffer *buffer = vma->vm_private_data;
+	struct dma_buf *dmabuf = vma->vm_private_data;
+	struct ion_buffer *buffer = dmabuf->priv;
 	unsigned long pfn;
 	int ret;
 
@@ -1131,7 +1132,8 @@ static int ion_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 
 static void ion_vm_open(struct vm_area_struct *vma)
 {
-	struct ion_buffer *buffer = vma->vm_private_data;
+	struct dma_buf *dmabuf = vma->vm_private_data;
+	struct ion_buffer *buffer =  dmabuf->priv;
 	struct ion_vma_list *vma_list;
 
 	vma_list = kmalloc(sizeof(struct ion_vma_list), GFP_KERNEL);
@@ -1147,7 +1149,8 @@ static void ion_vm_open(struct vm_area_struct *vma)
 
 static void ion_vm_close(struct vm_area_struct *vma)
 {
-	struct ion_buffer *buffer = vma->vm_private_data;
+	struct dma_buf *dmabuf = vma->vm_private_data;
+	struct ion_buffer *buffer =  dmabuf->priv;
 	struct ion_vma_list *vma_list, *tmp;
 
 	mutex_lock(&buffer->lock);
@@ -1180,10 +1183,10 @@ static int ion_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 		return -EINVAL;
 	}
 
+	vma->vm_private_data = dmabuf;
 	if (ion_buffer_fault_user_mappings(buffer)) {
 		vma->vm_flags |= VM_IO | VM_PFNMAP | VM_DONTEXPAND |
 							VM_DONTDUMP;
-		vma->vm_private_data = buffer;
 		vma->vm_ops = &ion_vma_ops;
 		ion_vm_open(vma);
 		return 0;
@@ -1462,7 +1465,8 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			IONMSG("ion_ioctl copy_from_user fail!. cmd = %d, n = %d.\n", cmd, _IOC_SIZE(cmd));
 			return -EFAULT;
 		}
-	}
+	} else
+		memset(&data, 0, sizeof(data));
 
 	switch (cmd) {
 	case ION_IOC_ALLOC:

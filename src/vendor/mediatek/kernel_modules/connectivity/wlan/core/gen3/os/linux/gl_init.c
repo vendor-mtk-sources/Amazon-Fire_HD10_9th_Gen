@@ -74,6 +74,17 @@ unsigned int g_board_type;
 static struct wireless_dev *gprWdev;
 BOOLEAN fgNvramAvailable;
 UINT_8 g_aucNvram[CFG_FILE_WIFI_REC_SIZE];
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+struct CMD_FW_ACTIVE_TIME_STATISTICS g_FwActiveTime;
+UINT32 g_FwActiveTimeStatus = 0; /*0: not statictics 1: statistics*/
+#endif
+/*record wifi on time statistics by screen status*/
+struct WIFI_ON_TIME_STATISTICS wifiOnTimeStatistics;
+/* fos_change begin */
+#if CFG_SUPPORT_WAKEUP_STATISTICS
+WAKEUP_STATISTIC g_arWakeupStatistic[WAKEUP_TYPE_NUM];
+UINT32 g_wake_event_count[EVENT_ID_END];
+#endif
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -258,6 +269,7 @@ const UINT_32 mtk_cipher_suites[5] = {
 #endif
 
 UINT_8 aucDebugModule[DBG_MODULE_NUM];
+
 
 /* 4 2007/06/26, mikewu, now we don't use this, we just fix the number of wlan device to 1 */
 static WLANDEV_INFO_T arWlanDevInfo[CFG_MAX_WLAN_DEVICES] = { {0} };
@@ -776,58 +788,84 @@ static COUNTRY_POWER_TABLE power_table_maverick[] = {
 };
 
 static COUNTRY_POWER_TABLE power_table_trona[] = {
-	COUNTRY_PWR_TBL("WW", /* country code */
-			0x21, /* CCK */
-			0x21, 0x21, 0x21, 0x21, 0x21, /* OFDM */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* HT20 */
-			0x22, 0x22, 0x22, 0x22, 0x22, 0x22, /* HT40 */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_OFDM */
-			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_HT20 */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT40 */
-			0x0, 0x1D, 0x1A, 0x1D, /* 2.4G band edge */
-			0x1, /* 5G support */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* AC */
-			0xFE, 0xFE, 0xFE, /* VHT_OFFSET */
-			0x1, 0x1F, 0x1B, 0x15), /* 5G band edge */
-	COUNTRY_PWR_TBL("US", /* country code */
-			0x21, /* CCK */
-			0x21, 0x21, 0x21, 0x21, 0x21, /* OFDM */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* HT20 */
-			0x21, 0x21, 0x21, 0x21, 0x21, 0x21, /* HT40 */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_OFDM */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT20 */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT40 */
-			0x0, 0x1D, 0x1A, 0x1D, /* 2.4G band edge */
-			0x1, /* 5G support */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* AC */
-			0xFE, 0xFE, 0xFE, /* VHT_OFFSET */
-			0x1, 0x1F, 0x1B, 0x15), /* 5G band edge */
-	COUNTRY_PWR_TBL("EU", /* country code */
-			0x24, /* CCK */
-			0x22, 0x22, 0x22, 0x22, 0x22, /* OFDM */
-			0x24, 0x24, 0x24, 0x24, 0x24, 0x24, /* HT20 */
-			0x22, 0x22, 0x22, 0x22, 0x22, 0x22, /* HT40 */
-			0x21, 0x21, 0x21, 0x21, 0x21, /* 5G_OFDM */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT20 */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT40 */
-			0x0, 0x22, 0x1C, 0x1A, /* 2.4G band edge */
-			0x1, /* 5G support */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* AC */
-			0xFE, 0xFE, 0xFE, /* VHT_OFFSET */
-			0x0, 0x1C, 0x15, 0x16), /* 5G band edge */
-	COUNTRY_PWR_TBL("JP", /* country code */
-			0x26, /* CCK */
-			0x23, 0x23, 0x23, 0x23, 0x23, /* OFDM */
-			0x25, 0x25, 0x25, 0x25, 0x25, 0x25, /* HT20 */
-			0x1A, 0x1A, 0x1A, 0x1A, 0x1A, 0x1A, /* HT40 */
-			0x20, 0x20, 0x20, 0x20, 0x20, /* 5G_OFDM */
-			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* 5G_HT20 */
-			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, /* 5G_HT40 */
-			0x0, 0x22, 0x1C, 0x1A, /* 2.4G band edge */
-			0x1, /* 5G support */
-			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, /* AC */
-			0xFF, 0xFF, 0xFF, /* VHT_OFFSET */
-			0x0, 0x1C, 0x15, 0x16), /* 5G band edge */
+	COUNTRY_PWR_TBL("WW",	/* country code */
+			0x23,	/* cck */
+			0x1B, 0x1B, 0x1B, 0x1B, 0x1B,	/* OFDM */
+			0x1B, 0x1B, 0x1B, 0x1B, 0x1B, 0x1B,	/* HT20 */
+			0x1B, 0x1B, 0x1B, 0x1B, 0x1B, 0x1B,	/* HT40 */
+			0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT20 */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E,	/* 5G_HT40 */
+			0x0, 0x1C, 0x1B, 0x00,	/* 2.4G band edge */
+			0x1,	/* 5G support */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E,	/* AC */
+			0xFF, 0xFF, 0xFF,	/* VHT_OFFSET */
+			0x0, 0x1B, 0x1E, 0x1B),	/* 5G band edge */
+	COUNTRY_PWR_TBL("US",	/* country code */
+			0x24,	/* cck */
+			0x25, 0x25, 0x25, 0x25, 0x25,	/* OFDM */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24,	/* HT20 */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24,	/* HT40 */
+			0x22, 0x22, 0x22, 0x22, 0x22,	/* 5G_OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT20 */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT40 */
+			0x0, 0x1C, 0x1B, 0x00,	/* 2.4G band edge */
+			0x1,	/* 5G support */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F,	/* AC */
+			0xFF, 0xFF, 0xFF,	/* VHT_OFFSET */
+			0x0, 0x1B, 0x1E, 0x1B),	/* 5G band edge */
+	COUNTRY_PWR_TBL("CA",	/* country code */
+			0x24,	/* cck */
+			0x25, 0x25, 0x25, 0x25, 0x25,	/* OFDM */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24,	/* HT20 */
+			0x24, 0x24, 0x24, 0x24, 0x24, 0x24,	/* HT40 */
+			0x22, 0x22, 0x22, 0x22, 0x22,	/* 5G_OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT20 */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT40 */
+			0x0, 0x1C, 0x1B, 0x00,	/* 2.4G band edge */
+			0x1,	/* 5G support */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F,	/* AC */
+			0xFF, 0xFF, 0xFF,	/* VHT_OFFSET */
+			0x0, 0x1B, 0x1E, 0x1B),	/* 5G band edge */
+	COUNTRY_PWR_TBL("AU",	/* country code */
+			0x24,	/* cck */
+			0x24, 0x24, 0x24, 0x24, 0x24,	/* OFDM */
+			0x26, 0x26, 0x26, 0x22, 0x22, 0x22,	/* HT20 */
+			0x26, 0x26, 0x26, 0x26, 0x26, 0x26,	/* HT40 */
+			0x22, 0x22, 0x22, 0x22, 0x22,	/* 5G_OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT20 */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT40 */
+			0x0, 0x1C, 0x1B, 0x00,	/* 2.4G band edge */
+			0x1,	/* 5G support */
+			0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F,	/* AC */
+			0xFF, 0xFF, 0xFF,	/* VHT_OFFSET */
+			0x0, 0x1B, 0x1E, 0x1B),	/* 5G band edge */
+	COUNTRY_PWR_TBL("EU",	/* country code */
+			0x24,	/* cck */
+			0x24, 0x24, 0x24, 0x24, 0x24,	/* OFDM */
+			0x26, 0x26, 0x26, 0x22, 0x22, 0x22,	/* HT20 */
+			0x26, 0x26, 0x26, 0x26, 0x26, 0x26,	/* HT40 */
+			0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_OFDM */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT20 */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* 5G_HT40 */
+			0x0, 0x1C, 0x1B, 0x00,	/* 2.4G band edge */
+			0x1,	/* 5G support */
+			0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,	/* AC */
+			0xFE, 0xFE, 0xFE,	/* VHT_OFFSET */
+			0x0, 0x1B, 0x1E, 0x1B),	/* 5G band edge */
+	COUNTRY_PWR_TBL("JP",	/* country code */
+			0x26,	/* cck */
+			0x24, 0x24, 0x24, 0x24, 0x24,	/* OFDM */
+			0x26, 0x26, 0x26, 0x22, 0x22, 0x22,	/* HT20 */
+			0x26, 0x26, 0x26, 0x26, 0x26, 0x26,	/* HT40 */
+			0x21, 0x21, 0x21, 0x21, 0x21,	/* 5G_OFDM */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E,	/* 5G_HT20 */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E,	/* 5G_HT40 */
+			0x0, 0x1C, 0x1B, 0x00,	/* 2.4G band edge */
+			0x1,	/* 5G support */
+			0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E,	/* AC */
+			0xFF, 0xFE, 0xFE,	/* VHT_OFFSET */
+			0x0, 0x1B, 0x1E, 0x1B),	/* 5G band edge */
 };
 
 struct board_id_power_table_map board_id_power_table_list[] = {
@@ -840,11 +878,12 @@ struct board_id_power_table_map board_id_power_table_list[] = {
 struct board_id_ant_orientation_map {
 	unsigned int dev_type_id;
 	unsigned int ant_placement[4];
+	unsigned int ant_signal[2];
 };
 
-struct board_id_ant_orientation_map board_id_ant_orientation_list[] = {
-	{ DEV_TYPE_ID_MAVERICK, ant_placement_maverick},
-	{ DEV_TYPE_ID_TRONA, ant_placement_trona},
+struct board_id_ant_orientation_map board_id_ant_list[] = {
+	{ DEV_TYPE_ID_MAVERICK, ant_placement_maverick, ant_signal_maverick},
+	{ DEV_TYPE_ID_TRONA, ant_placement_trona, ant_signal_trona},
 };
 #endif
 
@@ -906,6 +945,53 @@ unsigned int _cfg80211_classify8021d(struct sk_buff *skb)
 	return dscp >> 5;
 }
 #endif
+void updateWifiOnTimeStatistics(void)
+{
+	OS_SYSTIME currentTime;
+	struct net_device *prDev = NULL;
+	P_GLUE_INFO_T prGlueInfo = NULL;
+
+	if ((u4WlanDevNum == 0)
+		|| (u4WlanDevNum > CFG_MAX_WLAN_DEVICES)) {
+		return;
+	}
+
+	prDev = arWlanDevInfo[u4WlanDevNum - 1].prDev;
+	if (!prDev)
+		return;
+
+	prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv(prDev));
+	if (!prGlueInfo)
+		return;
+
+	DBGLOG(INIT, LOUD, "updateWifiOnTimeStatistics with ScreenStatusFlag[%d]\n", prGlueInfo->fgIsInSuspendMode);
+	if (kalHaltLock(KAL_HALT_LOCK_TIMEOUT_NORMAL_CASE))
+		return;
+
+	if (kalIsHalted()) {
+		kalHaltUnlock();
+		return;
+	}
+
+	/*get current timestamp*/
+	GET_CURRENT_SYSTIME(&currentTime);
+
+	if (prGlueInfo->fgIsInSuspendMode) { /*need to update u4WifiOnTimeDuringScreenOff*/
+		wifiOnTimeStatistics.u4WifiOnTimeDuringScreenOff +=
+			currentTime - wifiOnTimeStatistics.lastUpdateTime;
+		DBGLOG(INIT, LOUD, "update u4WifiOnTimeDuringScreenOff to %u\n",
+			wifiOnTimeStatistics.u4WifiOnTimeDuringScreenOff);
+	} else { /*need to update u4WifiOnTimeDuringScreenOn*/
+		wifiOnTimeStatistics.u4WifiOnTimeDuringScreenOn +=
+			currentTime - wifiOnTimeStatistics.lastUpdateTime;
+		DBGLOG(INIT, LOUD, "update u4WifiOnTimeDuringScreenOn to %u\n",
+			wifiOnTimeStatistics.u4WifiOnTimeDuringScreenOn);
+	}
+
+	/*update lastUpdateTime*/
+	wifiOnTimeStatistics.lastUpdateTime = currentTime;
+	kalHaltUnlock();
+}
 
 UINT_16 wlanSelectQueue(struct net_device *dev, struct sk_buff *skb,
 			void *accel_priv, select_queue_fallback_t fallback)
@@ -1577,14 +1663,6 @@ static int wlanOpen(struct net_device *prDev)
 
 	netif_tx_start_all_queues(prDev);
 
-#if CFG_SUPPORT_WAKEUP_STATISTICS
-	/* Initialize arWakeupStatistic */
-	kalMemSet(prGlueInfo->prAdapter->arWakeupStatistic, 0,
-		  sizeof(prGlueInfo->prAdapter->arWakeupStatistic));
-	/* Initialize wake_event_count */
-	kalMemSet(prGlueInfo->prAdapter->wake_event_count, 0,
-		  sizeof(prGlueInfo->prAdapter->wake_event_count));
-#endif
 #if CFG_SUPPORT_EXCEPTION_STATISTICS
 	kalMemSet(prGlueInfo->prAdapter->beacon_timeout_count, 0,
 			sizeof(prGlueInfo->prAdapter->beacon_timeout_count));
@@ -1718,16 +1796,18 @@ void wlanMonWorkHandler(struct work_struct *work)
 #endif
 
 #if CFG_SUPPORT_ANT_DIVERSITY
-PUINT_32 wlanGetUpdatedOrientationTable(void)
+WLAN_STATUS wlanAntSwitchTableInit(struct AIS_ANT_SWITCH_INFO_T *rAisAntSwitchInfo)
 {
 	UINT_8 i = 0;
 
-	for (i = 0; i < ARRAY_SIZE(board_id_ant_orientation_list); i++) {
-		if (g_board_type == board_id_ant_orientation_list[i].dev_type_id)
-			return board_id_ant_orientation_list[i].ant_placement;
+	for (i = 0; i < ARRAY_SIZE(board_id_ant_list); i++) {
+		if (g_board_type == board_id_ant_list[i].dev_type_id) {
+			rAisAntSwitchInfo->ant_gpio_table = board_id_ant_list[i].ant_signal;
+			rAisAntSwitchInfo->ant_placement_table = board_id_ant_list[i].ant_placement;
+			return WLAN_STATUS_SUCCESS;
+		}
 	}
-	DBGLOG(INIT, ERROR, "[AntS] unknown dev_type_id. Use default ant_orientation_table\n");
-	return board_id_ant_orientation_list[0].ant_placement;
+	return WLAN_STATUS_FAILURE;
 }
 #endif
 /*----------------------------------------------------------------------------*/
@@ -2807,6 +2887,67 @@ static VOID wlanDrvCommonWork(struct work_struct *work)
 	}
 }
 
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+static void wlanBackupFwActiveTimeStatistics(void)
+{
+	struct CMD_FW_ACTIVE_TIME_STATISTICS rCmdFwActiveTime = {0};
+	UINT_32 u4BufLen = 0;
+	UINT_32 rStatus = WLAN_STATUS_SUCCESS;
+	struct net_device *prDev = NULL;
+	P_GLUE_INFO_T prGlueInfo = NULL;
+
+	if ((u4WlanDevNum == 0) ||
+		(u4WlanDevNum > CFG_MAX_WLAN_DEVICES)) {
+		return;
+	}
+
+	prDev = arWlanDevInfo[u4WlanDevNum - 1].prDev;
+	if (!prDev)
+		return;
+
+	prGlueInfo = *((P_GLUE_INFO_T *) netdev_priv(prDev));
+	if (!prGlueInfo)
+		return;
+
+	/*need to read fw active time statistics before remove wlan*/
+	rCmdFwActiveTime.u4Action = FW_ACTIVE_TIME_STATISTICS_ACTION_GET;
+	rStatus = kalIoctl(prGlueInfo, wlanoidGetFwActiveTimeStatistics,
+		&rCmdFwActiveTime,
+		sizeof(struct CMD_FW_ACTIVE_TIME_STATISTICS),
+		TRUE, TRUE, TRUE, &u4BufLen);
+
+	/*update driver statistics*/
+	if (WLAN_STATUS_SUCCESS == rStatus) {
+		g_FwActiveTime.u4TimeDuringScreenOn += rCmdFwActiveTime.u4TimeDuringScreenOn;
+		g_FwActiveTime.u4TimeDuringScreenOff += rCmdFwActiveTime.u4TimeDuringScreenOff;
+		g_FwActiveTime.u4HwTimeDuringScreenOn += rCmdFwActiveTime.u4HwTimeDuringScreenOn;
+		g_FwActiveTime.u4HwTimeDuringScreenOff += rCmdFwActiveTime.u4HwTimeDuringScreenOff;
+	}
+}
+#endif
+
+#if CFG_SUPPORT_WLAN_CUSTOMIZE_WMM
+static void wlanCustomizeWmm(P_ADAPTER_T prAdapter)
+{
+	char *cmdBuffer = NULL;
+
+	cmdBuffer = kalMemAlloc(MAX_CMD_BUFFER_LENGTH, VIR_MEM_TYPE);
+	if (cmdBuffer) {
+		kalMemZero(cmdBuffer, MAX_CMD_BUFFER_LENGTH);
+		wlanCfgFwSetParam(cmdBuffer, "WmmParamCfgEn", "1", 0, 1);
+		wlanCfgFwSetParam(cmdBuffer, "CwMax", "1023", 1, 1);
+		wlanCfgFwSetParam(cmdBuffer, "CwMin", "15", 2, 1);
+		wlanCfgFwSetParam(cmdBuffer, "AifsN", "3", 3, 1);
+		wlanCfgSetGetFw(prAdapter, cmdBuffer, MAX_CMD_ITEM_MAX, CMD_TYPE_SET);
+		kalMemZero(cmdBuffer, MAX_CMD_BUFFER_LENGTH);
+		wlanCfgFwSetParam(cmdBuffer, "TxOp", "0", 0, 1);
+		wlanCfgSetGetFw(prAdapter, cmdBuffer, 1, CMD_TYPE_SET);
+		DBGLOG(INIT, INFO, "Customize wmm parameters\n");
+		kalMemFree(cmdBuffer, VIR_MEM_TYPE, MAX_CMD_BUFFER_LENGTH);
+	}
+}
+#endif
+
 /*----------------------------------------------------------------------------*/
 /*!
 * \brief Wlan probe function. This function probes and initializes the device.
@@ -2830,6 +2971,7 @@ static INT_32 wlanProbe(PVOID pvData)
 		NET_REGISTER_FAIL,
 		PROC_INIT_FAIL,
 		FAIL_MET_INIT_PROCFS,
+		FAIL_AST_INIT,
 		FAIL_REASON_NUM
 	} eFailReason;
 	P_WLANDEV_INFO_T prWlandevInfo = NULL;
@@ -2839,8 +2981,14 @@ static INT_32 wlanProbe(PVOID pvData)
 	INT_32 i4Status = 0;
 	BOOL bRet = FALSE;
 	UINT_32 u4LogLevel = ENUM_WIFI_LOG_LEVEL_OFF;
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+	struct CMD_FW_ACTIVE_TIME_STATISTICS rCmdFwActiveTime = {0};
+	INT_32 rCmdStatus = WLAN_STATUS_SUCCESS;
+	UINT_32 u4BufLen = 0;
+#endif
 
 	eFailReason = FAIL_REASON_NUM;
+
 	do {
 		/* 4 <1> Initialize the IO port of the interface */
 		/*  GeorgeKuo: pData has different meaning for _HIF_XXX:
@@ -2965,7 +3113,13 @@ static INT_32 wlanProbe(PVOID pvData)
 		prGlueInfo->fgWas1stSwitch = TRUE;
 		prGlueInfo->fgIsEnableDelaySwap = TRUE;
 		prGlueInfo->u4AsDelayMSec = AIS_ANT_SW_DELAY_MSEC;
-		prGlueInfo->prAdapter->rWifiVar.rAisAntSwitchInfo.ant_placement_table = wlanGetUpdatedOrientationTable();
+		/*init the ant switch table */
+		i4Status = wlanAntSwitchTableInit(&prAdapter->rWifiVar.rAisAntSwitchInfo);
+		if (i4Status != WLAN_STATUS_SUCCESS) {
+			DBGLOG(INIT, ERROR, "wlanProbe: init antswitch table error\n");
+			eFailReason = FAIL_AST_INIT;
+			break;
+		}
 #endif
 
 		/* kalMemCopy(&prGlueInfo->rRegInfo, prRegInfo, sizeof(REG_INFO_T)); */
@@ -3147,6 +3301,10 @@ static INT_32 wlanProbe(PVOID pvData)
 		wlanCfgSetChip(prGlueInfo->prAdapter);
 		wlanGetFwInfo(prGlueInfo->prAdapter);
 		wlanCfgSetCountryCode(prGlueInfo->prAdapter);
+		/*customize wmm by wlan*/
+#if CFG_SUPPORT_WLAN_CUSTOMIZE_WMM
+		wlanCustomizeWmm(prGlueInfo->prAdapter);
+#endif
 		/* Init performance monitor structure */
 		kalPerMonInit(prGlueInfo);
 #if CFG_SUPPORT_AGPS_ASSIST
@@ -3205,6 +3363,27 @@ static INT_32 wlanProbe(PVOID pvData)
 		DBGLOG(INIT, ERROR, "wlanProbe failed\n");
 	}
 
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+	if (WLAN_STATUS_SUCCESS == i4Status) {
+		/*always enable this feature when wifi on*/
+		rCmdFwActiveTime.u4Action = FW_ACTIVE_TIME_STATISTICS_ACTION_START;
+		rCmdStatus = kalIoctl(prGlueInfo, wlanoidSetFwActiveTimeStatistics,
+			&rCmdFwActiveTime,
+			sizeof(struct CMD_FW_ACTIVE_TIME_STATISTICS),
+			FALSE, FALSE, TRUE, &u4BufLen);
+		if (rCmdStatus != WLAN_STATUS_SUCCESS) {
+			DBGLOG(INIT, WARN, "fail to enable fw active time statistics\n");
+			g_FwActiveTimeStatus = 0;
+		} else {
+			g_FwActiveTimeStatus = 1;
+		}
+	}
+#endif
+
+	/*update lastUpdateTime*/
+	GET_CURRENT_SYSTIME(&(wifiOnTimeStatistics.lastUpdateTime));
+	DBGLOG(INIT, LOUD, "only need to update lastUpdateTime when wifi on\n");
+
 	return i4Status;
 }				/* end of wlanProbe() */
 
@@ -3225,6 +3404,14 @@ static VOID wlanRemove(VOID)
 	P_ADAPTER_T prAdapter = NULL;
 
 	DBGLOG(INIT, INFO, "Remove wlan!\n");
+
+#if CFG_SUPPORT_FW_ACTIVE_TIME_STATISTICS
+	if (g_FwActiveTimeStatus)
+		wlanBackupFwActiveTimeStatistics();
+#endif
+
+	/*need to update wifi on time statistics*/
+	updateWifiOnTimeStatistics();
 
 	/* 4 <0> Sanity check */
 	ASSERT(u4WlanDevNum <= CFG_MAX_WLAN_DEVICES);

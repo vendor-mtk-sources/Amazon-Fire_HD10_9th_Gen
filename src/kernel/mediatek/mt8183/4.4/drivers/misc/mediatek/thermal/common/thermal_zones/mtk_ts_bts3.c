@@ -124,7 +124,9 @@ static int g_TAP_over_critical_low = BTS3_TAP_OVER_CRITICAL_LOW;
 static int g_RAP_pull_up_voltage = BTS3_RAP_PULL_UP_VOLTAGE;
 static int g_RAP_ntc_table = BTS3_RAP_NTC_TABLE;
 static int g_RAP_ADC_channel = BTS3_RAP_ADC_CHANNEL;
+#ifndef CONFIG_THERMAL_FOD
 static int g_AP_TemperatureR;
+#endif
 
 static struct bts3_TEMPERATURE *bts3_Temperature_Table;
 static int ntc_tbl_size;
@@ -169,10 +171,10 @@ static struct bts3_TEMPERATURE bts3_Temperature_Table1[] = {
 
 /* AP_NTC_TSM_1 */
 static struct bts3_TEMPERATURE bts3_Temperature_Table2[] = {
-	{-40, 70603},		/* FIX_ME */
-	{-35, 70603},		/* FIX_ME */
-	{-30, 70603},		/* FIX_ME */
-	{-25, 70603},		/* FIX_ME */
+	{-40, 70603},           /* FIX_ME */
+	{-35, 70603},           /* FIX_ME */
+	{-30, 70603},           /* FIX_ME */
+	{-25, 70603},           /* FIX_ME */
 	{-20, 70603},
 	{-15, 55183},
 	{-10, 43499},
@@ -182,27 +184,27 @@ static struct bts3_TEMPERATURE bts3_Temperature_Table2[] = {
 	{10, 18104},
 	{15, 14773},
 	{20, 12122},
-	{25, 10000},		/* 10K */
+	{25, 10000},            /* 10K */
 	{30, 8294},
 	{35, 6915},
 	{40, 5795},
 	{45, 4882},
 	{50, 4133},
 	{55, 3516},
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004},		/* FIX_ME */
-	{60, 3004}		/* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004},             /* FIX_ME */
+	{60, 3004}              /* FIX_ME */
 };
 
 /* AP_NTC_10_SEN_1 */
@@ -421,6 +423,7 @@ static struct bts3_TEMPERATURE bts3_Temperature_Table7[] = {
 };
 
 
+#ifndef CONFIG_THERMAL_FOD
 /* convert register to temperature  */
 static __s16 mtkts_bts3_thermistor_conver_temp(__s32 Res)
 {
@@ -578,6 +581,7 @@ static int get_hw_bts3_temp(void)
 	mtkts_bts3_dprintk("BTS output temperature = %d\n", output);
 	return output;
 }
+#endif
 
 static DEFINE_MUTEX(bts3_lock);
 /*int ts_AP_at_boot_time = 0;*/
@@ -590,7 +594,11 @@ int mtkts_bts3_get_hw_temp(void)
 
 	/* get HW AP temp (TSAP) */
 	/* cat /sys/class/power_supply/AP/AP_temp */
+#ifdef CONFIG_THERMAL_FOD
+	t_ret = get_hw_bts_temp_export(g_RAP_ADC_channel, NTC_EMMC);
+#else
 	t_ret = get_hw_bts3_temp();
+#endif
 	t_ret = t_ret * 1000;
 
 	mutex_unlock(&bts3_lock);
@@ -1154,15 +1162,15 @@ static ssize_t mtkts_bts3_param_write(struct file *file,
 		*can't use pin:2/3/4/5/6/7/8/9/10/11,
 		*choose "adc_channel=11" to check if there is any param input
 		*/
-		if ((ptr_mtktsbts3_parm_data->adc_channel >= 5) &&
-				(ptr_mtktsbts3_parm_data->adc_channel <= 10))
+		if ((ptr_mtktsbts3_parm_data->adc_channel < 0) ||
+				(ptr_mtktsbts3_parm_data->adc_channel > 15))
 			/* check unsupport pin value,
 			 *if unsupport, set channel = 2 as default setting.
 			 */
 			g_RAP_ADC_channel = AUX_IN3_NTC;
 		else {
 			/* check if there is any param input,
-			 * if not using default g_RAP_ADC_channel:2
+			 * if not using default g_RAP_ADC_channel:3
 			 */
 			if (ptr_mtktsbts3_parm_data->adc_channel != 11)
 				g_RAP_ADC_channel =

@@ -1210,6 +1210,11 @@ VOID kalFbNotifierUnReg(VOID);
 UINT_8 kalGetEapolKeyType(P_NATIVE_PACKET prPacket);
 
 VOID nicConfigProcSetCamCfgWrite(BOOLEAN enabled);
+#if CFG_SUPPORT_DFS
+void kalIndicateChannelSwitch(IN  GLUE_INFO_T *prGlueInfo,
+			IN ENUM_CHNL_EXT_T eSco,
+			IN uint8_t ucChannelNum);
+#endif
 
 VOID kalSetEmiMpuProtection(phys_addr_t emiPhyBase, UINT_32 size, BOOLEAN enable);
 BOOLEAN kalIsValidMacAddr(IN const UINT_8 *addr);

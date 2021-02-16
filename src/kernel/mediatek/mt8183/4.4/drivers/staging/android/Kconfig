@@ -130,6 +130,15 @@ config ANDROID_VSOC
 	  a 'cuttlefish' Android image inside QEmu. The driver interacts with
 	  a QEmu ivshmem device. If built as a module, it will be called vsoc.
 
+config CONFIG_MTK_DISABLE_LMK_PROMOTE_PRIORITY
+	bool "Enable/Disable a lmk patch that can promote its priority of killing process"
+	default n
+	---help---
+	  This config adds support for Enable/Disable lmk related feautre
+	  it can promote lmk priority of killing process
+	  say Y here to disable this feature
+	  If unsure, say N
+
 source "drivers/staging/android/ion/Kconfig"
 
 source "drivers/staging/android/fiq_debugger/Kconfig"

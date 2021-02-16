@@ -74,7 +74,7 @@ static INT32 wmt_dbg_reg_read(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_reg_write(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_coex_test(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_assert_test(INT32 par1, INT32 par2, INT32 par3);
-static INT32 wmt_dbg_cmd_test_api(ENUM_WMTDRV_CMD_T cmd);
+static INT32 wmt_dbg_cmd_test_api(ENUM_WMTDRV_CMD_T cmd, PUINT8 keyword);
 static INT32 wmt_dbg_rst_ctrl(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_ut_test(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_efuse_read(INT32 par1, INT32 par2, INT32 par3);
@@ -269,27 +269,28 @@ INT32 wmt_dbg_assert_test(INT32 par1, INT32 par2, INT32 par3)
 {
 	INT32 sec = 8;
 	INT32 times = 0;
+	PUINT8 pbuf = "QA echo assert test from wmtdbg";
 
 	if (par3 == 0) {
 		/* par2 = 0:  send assert command */
 		/* par2 != 0: send exception command */
-		return wmt_dbg_cmd_test_api(par2 == 0 ? 0 : 1);
+		return wmt_dbg_cmd_test_api(par2 == 0 ? 0 : 1, pbuf);
 	} else if (par3 == 1) {
 		/* send noack command */
-		return wmt_dbg_cmd_test_api(WMTDRV_CMD_NOACK_TEST);
+		return wmt_dbg_cmd_test_api(WMTDRV_CMD_NOACK_TEST, pbuf);
 	} else if (par3 == 2) {
 		/* warn reset test */
-		return wmt_dbg_cmd_test_api(WMTDRV_CMD_WARNRST_TEST);
+		return wmt_dbg_cmd_test_api(WMTDRV_CMD_WARNRST_TEST, pbuf);
 	} else if (par3 == 3) {
 		/* firmware trace test - for soc usage, not used in combo chip */
-		return wmt_dbg_cmd_test_api(WMTDRV_CMD_FWTRACE_TEST);
+		return wmt_dbg_cmd_test_api(WMTDRV_CMD_FWTRACE_TEST, pbuf);
 	} else if (par3 == 4) {
 		if (DISABLE_PSM_MONITOR()) {
 			WMT_ERR_FUNC("wake up failed\n");
 			return -1;
 		}
 		/* driver type */
-		wmt_lib_trigger_assert(par2, 30);
+		wmt_lib_trigger_assert_keyword(par2, 30, pbuf);
 		ENABLE_PSM_MONITOR();
 		return 0;
 	}  else if (par3 == 5) {
@@ -298,7 +299,7 @@ INT32 wmt_dbg_assert_test(INT32 par1, INT32 par2, INT32 par3)
 			return -1;
 		}
 		/* assert reason */
-		wmt_lib_trigger_assert(4, par2);
+		wmt_lib_trigger_assert_keyword(4, par2, pbuf);
 		ENABLE_PSM_MONITOR();
 		return 0;
 	}
@@ -306,14 +307,14 @@ INT32 wmt_dbg_assert_test(INT32 par1, INT32 par2, INT32 par3)
 	times = par3;
 	do {
 		WMT_INFO_FUNC("Send Assert Command per 8 secs!!\n");
-		wmt_dbg_cmd_test_api(0);
+		wmt_dbg_cmd_test_api(0, pbuf);
 		osal_sleep_ms(sec * 1000);
 	} while (--times);
 
 	return 0;
 }
 
-INT32 wmt_dbg_cmd_test_api(ENUM_WMTDRV_CMD_T cmd)
+INT32 wmt_dbg_cmd_test_api(ENUM_WMTDRV_CMD_T cmd, PUINT8 keyword)
 {
 	P_OSAL_OP pOp = NULL;
 	MTK_WCN_BOOL bRet = MTK_WCN_BOOL_FALSE;
@@ -391,7 +392,7 @@ INT32 wmt_dbg_cmd_test_api(ENUM_WMTDRV_CMD_T cmd)
 		      bRet, MTK_WCN_BOOL_FALSE == bRet ? "failed" : "succeed");
 
 	if (bRet == MTK_WCN_BOOL_TRUE)
-		wmt_lib_set_host_assert_info(WMTDRV_TYPE_WMT, 0, 1);
+		wmt_lib_set_host_assert_info(WMTDRV_TYPE_WMT, 0, 1, keyword);
 
 	return 0;
 }
@@ -762,7 +763,7 @@ INT32 wmt_dbg_coex_test(INT32 par1, INT32 par2, INT32 par3)
 {
 	WMT_INFO_FUNC("coexistance test cmd!!\n");
 
-	return wmt_dbg_cmd_test_api(par2 + WMTDRV_CMD_COEXDBG_00);
+	return wmt_dbg_cmd_test_api(par2 + WMTDRV_CMD_COEXDBG_00, NULL);
 }
 
 INT32 wmt_dbg_rst_ctrl(INT32 par1, INT32 par2, INT32 par3)

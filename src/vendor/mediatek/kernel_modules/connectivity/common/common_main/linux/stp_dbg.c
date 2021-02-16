@@ -43,6 +43,14 @@
 #include "stp_sdio.h"
 #include "stp_core.h"
 #include "mtk_wcn_consys_hw.h"
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#endif
+
+
 
 
 UINT32 gStpDbgLogOut;
@@ -497,6 +505,43 @@ static _osal_inline_ INT32 stp_dbg_core_dump_reset(P_WCN_CORE_DUMP_T dmp, UINT32
 	g_core_dump = stp_dbg_core_dump_init(STP_CORE_DUMP_TIMEOUT);
 
 	return 0;
+}
+
+VOID notify_fwk_chip_reset(VOID)
+{
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
+	UINT32 from_host;
+	UINT32 drv_type;
+	int ret = -1;
+	INT8 *c_drv_type;
+	PUINT8 pDtr = NULL;
+	PUINT8 pbuf = "QA echo assert test from wmtdbg";
+	from_host = g_stp_dbg_cpupcr->host_assert_info.assert_from_host;
+	drv_type = g_stp_dbg_cpupcr->host_assert_info.drv_type;
+
+	pDtr = osal_strstr(&g_stp_dbg_cpupcr->keyword[0], pbuf);
+
+	if (pDtr != NULL)
+		return;
+
+	switch (drv_type) {
+	case WMTDRV_TYPE_BT:
+		c_drv_type = "BT";
+		break;
+	case WMTDRV_TYPE_WIFI:
+		c_drv_type = "WIFI";
+		break;
+	case WMTDRV_TYPE_WMT:
+		c_drv_type = "WMT";
+		break;
+	default:
+		return;
+	}
+	ret = log_counter_to_vitals(ANDROID_LOG_INFO, "Kernel vitals", "wifiKDM", "conn-num-chipreset",
+				     c_drv_type, (u32)1, "count", from_host ? "DRV" : "FW", VITALS_NORMAL);
+	if (ret)
+	       STP_DBG_PR_ERR("log_counter_to_vitals: fails in Key =%s metadata=%s %d\n",c_drv_type, from_host ? "DRV" : "FW", ret);
+#endif
 }
 
 #define ENABLE_F_TRACE 0

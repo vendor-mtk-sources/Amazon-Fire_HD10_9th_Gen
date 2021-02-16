@@ -1019,8 +1019,7 @@ s32 cmdq_sec_task_copy_to_buffer(struct TaskStruct *task,
 {
 	s32 status;
 	u32 *copy_cmd_src, pre_copy_size;
-	const bool user_space_req = cmdq_core_is_request_from_user_space(
-		task->scenario);
+	const bool user_space_req = false;
 	u32 *buffer_head;
 
 	if (!desc) {

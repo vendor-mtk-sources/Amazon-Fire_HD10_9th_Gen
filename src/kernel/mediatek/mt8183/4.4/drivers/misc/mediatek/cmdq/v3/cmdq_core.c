@@ -38,6 +38,7 @@
 #include <linux/atomic.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
+#include <linux/memblock.h>
 #include <linux/memory.h>
 #include <linux/ftrace.h>
 #ifdef CMDQ_MET_READY
@@ -251,160 +252,6 @@ static struct MemRecordStruct g_cmdq_mem_records[9];
 static struct MemMonitorStruct g_cmdq_mem_monitor;
 
 static struct StressContextStruct gStressContext;
-
-static bool cmdq_core_check_gpr_valid(const u32 gpr, const bool val)
-{
-	if (val) {
-		switch (gpr) {
-		case CMDQ_DATA_REG_JPEG:
-		case CMDQ_DATA_REG_PQ_COLOR:
-		case CMDQ_DATA_REG_2D_SHARPNESS_0:
-		case CMDQ_DATA_REG_2D_SHARPNESS_1:
-		case CMDQ_DATA_REG_DEBUG:
-			return true;
-		default:
-			return false;
-		}
-	} else {
-		switch (gpr >> 16) {
-		case CMDQ_DATA_REG_JPEG_DST:
-		case CMDQ_DATA_REG_PQ_COLOR_DST:
-		case CMDQ_DATA_REG_2D_SHARPNESS_0:
-		case CMDQ_DATA_REG_2D_SHARPNESS_0_DST:
-		case CMDQ_DATA_REG_2D_SHARPNESS_1_DST:
-		case CMDQ_DATA_REG_DEBUG_DST:
-			return true;
-		default:
-			return false;
-		}
-	}
-	return false;
-}
-
-static bool cmdq_core_check_dma_addr_valid(const unsigned long pa)
-{
-	struct WriteAddrStruct *waddr = NULL;
-	unsigned long flags = 0L;
-	bool ret = false;
-
-	if (pa % 4 != 0)
-		return false;
-
-	spin_lock_irqsave(&gCmdqWriteAddrLock, flags);
-	list_for_each_entry(waddr, &gCmdqContext.writeAddrList, list_node)
-		if (pa - (unsigned long)waddr->pa >= 0 &&
-			pa - (unsigned long)waddr->pa < waddr->count << 2) {
-			ret = true;
-			break;
-		}
-	spin_unlock_irqrestore(&gCmdqWriteAddrLock, flags);
-	return ret;
-}
-
-static bool cmdq_core_check_instr_valid(const u64 instr)
-{
-	u32 op = instr >> 56, option = (instr >> 53) & 0x7;
-	u32 argA = (instr >> 32) & 0x1FFFFF, argB = instr & 0xFFFFFFFF;
-
-	switch (op) {
-	case CMDQ_CODE_WRITE:
-		/* allow write argB to argA
-		** option = 0x00
-		** argA: not limit
-		** argB: not limit
-		*/
-		if (!option)
-			return true;
-		/* allow write argB to argA
-		** option = 0x04
-		** argA: GPR addr
-		** argB: not limit
-		*/
-		if (option == 0x04 && cmdq_core_check_gpr_valid(argA, false))
-			return true;
-	case CMDQ_CODE_READ:
-		/* allow read argA to argB
-		** option = 0x02
-		** argA: not limit
-		** argB: GPR value
-		*/
-		if (option == 0x02 && cmdq_core_check_gpr_valid(argB, true))
-			return true;
-		/* allow read register value to GPR value.
-		** option = 0x06
-		** argA: GPR addr
-		** argB: GPR value
-		*/
-		if (option == 0x06 && cmdq_core_check_gpr_valid(argA, false) &&
-			cmdq_core_check_gpr_valid(argB, true))
-			return true;
-		break;
-	case CMDQ_CODE_MOVE:
-		/* allow mask instruction
-		** option = 0x00
-		** argA = 0
-		** argB: no limit.
-		*/
-		if (!option && !argA)
-			return true;
-		/* allow move dma addr(cmdq allocated) to addr GPR.
-		** option = 0x04
-		** argA: should be GPR addr
-		** argB: dma_addr
-		*/
-		if (option == 0x04 && cmdq_core_check_gpr_valid(argA, false) &&
-			cmdq_core_check_dma_addr_valid(argB))
-			return true;
-		break;
-	case CMDQ_CODE_JUMP:
-		/* only allow JUMP + 8
-		** argA = 0
-		** argB = 8
-		*/
-		if (!argA && argB == 0x08)
-			return true;
-		break;
-	case CMDQ_CODE_POLL:
-	case CMDQ_CODE_WFE:
-	case CMDQ_CODE_EOC:
-		return true;
-	case CMDQ_CODE_READ_S:
-	case CMDQ_CODE_WRITE_S:
-	case CMDQ_CODE_WRITE_S_W_MASK:
-	case CMDQ_CODE_LOGIC:
-	case CMDQ_CODE_JUMP_C_ABSOLUTE:
-	case CMDQ_CODE_JUMP_C_RELATIVE:
-		break;
-	default:
-		break;
-	}
-	CMDQ_ERR("instr:%#llx\n", instr);
-	return false;
-}
-
-static bool cmdq_core_check_command_valid(struct TaskStruct *pTask)
-
-{
-	struct CmdBufferStruct *entry = NULL;
-	s32 size = CMDQ_CMD_BUFFER_SIZE;
-	u64 *va;
-	bool ret = true;
-
-	list_for_each_entry(entry, &pTask->cmd_buffer_list, listEntry) {
-		if (list_is_last(&entry->listEntry, &pTask->cmd_buffer_list))
-			size -= pTask->buf_available_size;
-
-		for (va = (u64 *)entry->pVABase; ret &&
-			(va + 1) < (u64 *)((u8 *)entry->pVABase + size); va++)
-			ret &= cmdq_core_check_instr_valid(*va);
-
-		if (ret && (*va >> 56) != CMDQ_CODE_JUMP)
-			ret &= cmdq_core_check_instr_valid(*va);
-		if (!ret)
-			break;
-	}
-	return ret;
-}
 
 u32 cmdq_core_max_task_in_thread(s32 thread)
 {
@@ -1049,7 +896,15 @@ static void cmdq_core_copy_v3_struct(struct TaskStruct *pTask, struct cmdqComman
 		pTask->replace_instr.number = 0;
 		return;
 	}
-	memcpy(p_instr_position, CMDQ_U32_PTR(pCommandDesc->replace_instr.position), array_num);
+
+	if (copy_from_user((void *)(unsigned long)p_instr_position,
+			CMDQ_U32_PTR(pCommandDesc->replace_instr.position), array_num)) {
+		kfree(p_instr_position);
+		pTask->replace_instr.position = (cmdqU32Ptr_t)(unsigned long)NULL;
+		pTask->replace_instr.number = 0;
+		return;
+	}
+
 	pTask->replace_instr.position = (cmdqU32Ptr_t) (unsigned long)p_instr_position;
 }
 
@@ -2364,7 +2219,14 @@ static void cmdq_task_init_profile_marker_data(struct cmdqCommandStruct *pComman
 	uint32_t i;
 
 	pTask->profileMarker.count = pCommandDesc->profileMarker.count;
+	if (pTask->profileMarker.count > CMDQ_MAX_PROFILE_MARKER_IN_TASK)
+		pTask->profileMarker.count = CMDQ_MAX_PROFILE_MARKER_IN_TASK;
+
 	pTask->profileMarker.hSlot = pCommandDesc->profileMarker.hSlot;
+	if (pTask->profileMarker.hSlot & 0x3) {
+		CMDQ_ERR("hSlot is not aligned to 4 byte, reset to 0LL\n");
+		pTask->profileMarker.hSlot = 0LL;
+	}
 	for (i = 0; i < CMDQ_MAX_PROFILE_MARKER_IN_TASK; i++)
 		pTask->profileMarker.tag[i] = pCommandDesc->profileMarker.tag[i];
 }
@@ -3583,8 +3445,7 @@ static int32_t cmdq_core_insert_read_reg_command(struct TaskStruct *pTask,
 	struct cmdqCommandStruct *pCommandDesc)
 {
 	s32 status = 0;
-	const bool userSpaceRequest = cmdq_core_is_request_from_user_space(
-		pTask->scenario);
+	const bool userSpaceRequest = false;
 	bool postInstruction = false;
 	u32 *copyCmdSrc = NULL;
 	u32 copyCmdSize = 0;
@@ -3612,8 +3473,9 @@ static int32_t cmdq_core_insert_read_reg_command(struct TaskStruct *pTask,
 		copyCmdSize = pCommandDesc->blockSize - 2 * CMDQ_INST_SIZE;
 	else
 		copyCmdSize = pCommandDesc->blockSize;
-	status = cmdq_core_copy_cmd_to_task_impl(pTask, copyCmdSrc,
-		copyCmdSize, userSpaceRequest);
+
+	status = cmdq_core_copy_cmd_to_task_impl(pTask, copyCmdSrc, copyCmdSize,
+		userSpaceRequest);
 	if (status < 0)
 		return status;
 
@@ -3664,12 +3526,6 @@ static int32_t cmdq_core_insert_read_reg_command(struct TaskStruct *pTask,
 		"[CMD] line:%d CMDEnd:%p cmdSize:%d bufferSize:%u block size:%u\n",
 		__LINE__, pTask->pCMDEnd, pTask->commandSize,
 		pTask->bufferSize, pCommandDesc->blockSize);
-
-	if (cmdq_core_is_request_from_user_space(pTask->scenario))
-		if (!cmdq_core_check_command_valid(pTask)) {
-			CMDQ_ERR("check command failed!\n");
-			return -1;
-		}
 
 	if (unlikely(!cmdq_core_task_finalize_end(pTask))) {
 		CMDQ_ERR(
@@ -3780,6 +3636,7 @@ static struct TaskStruct *cmdq_core_acquire_task(
 	int32_t status;
 	CMDQ_TIME time_cost;
 	struct TaskPrivateStruct *private = NULL, *desc_private = NULL;
+	const u64 inorder_mask = 1ll << CMDQ_ENG_INORDER;
 
 	CMDQ_MSG(
 		"-->TASK: acquire task begin CMD:0x%p, size:%d, Eng:0x%016llx\n",
@@ -3800,7 +3657,7 @@ static struct TaskStruct *cmdq_core_acquire_task(
 		pTask->desc = pCommandDesc;
 		pTask->scenario = pCommandDesc->scenario;
 		pTask->priority = pCommandDesc->priority;
-		pTask->engineFlag = pCommandDesc->engineFlag;
+		pTask->engineFlag = pCommandDesc->engineFlag & ~inorder_mask;
 		pTask->loopCallback = loopCB;
 		pTask->loopData = loopData;
 		pTask->taskState = TASK_STATE_WAITING;
@@ -3818,7 +3675,9 @@ static struct TaskStruct *cmdq_core_acquire_task(
 		if (pCommandDesc->prop_size && pCommandDesc->prop_addr &&
 			pCommandDesc->prop_size < CMDQ_MAX_USER_PROP_SIZE) {
 			pTask->prop_addr = kzalloc(pCommandDesc->prop_size, GFP_KERNEL);
-			memcpy(pTask->prop_addr, (void *)CMDQ_U32_PTR(pCommandDesc->prop_addr),
+
+			memcpy(pTask->prop_addr,
+				(void *)CMDQ_U32_PTR(pCommandDesc->prop_addr),
 				pCommandDesc->prop_size);
 			pTask->prop_size = pCommandDesc->prop_size;
 		} else {
@@ -3842,6 +3701,9 @@ static struct TaskStruct *cmdq_core_acquire_task(
 			pTask->res_engine_flag_acquire = 0;
 			pTask->res_engine_flag_release = 0;
 		}
+
+		if (pCommandDesc->engineFlag & inorder_mask)
+			pTask->force_inorder = true;
 
 		/* reset private data from desc */
 		desc_private = (struct TaskPrivateStruct *)CMDQ_U32_PTR(
@@ -4623,7 +4485,7 @@ const char *cmdq_core_parse_subsys_from_reg_addr(uint32_t reg_addr)
 int32_t cmdq_core_subsys_from_phys_addr(uint32_t physAddr)
 {
 	int32_t msb;
-	int32_t subsysID = -1;
+	int32_t subsysID = CMDQ_SPECIAL_SUBSYS_ADDR;
 	uint32_t i;
 
 	for (i = 0; i < CMDQ_SUBSYS_MAX_COUNT; i++) {
@@ -4637,20 +4499,6 @@ int32_t cmdq_core_subsys_from_phys_addr(uint32_t physAddr)
 		}
 	}
 
-	if (subsysID == -1 && gAddOnSubsys.subsysID > 0) {
-		msb = physAddr & gAddOnSubsys.mask;
-		if (msb == gAddOnSubsys.msb)
-			subsysID = gAddOnSubsys.subsysID;
-	}
-
-	if (subsysID == -1) {
-		/* if not supported physAddr is GCE base address, then tread as special address */
-		msb = physAddr & GCE_BASE_PA;
-		if (msb == GCE_BASE_PA)
-			subsysID = CMDQ_SPECIAL_SUBSYS_ADDR;
-		else
-			CMDQ_ERR("unrecognized subsys, physAddr:0x%08x\n", physAddr);
-	}
 	return subsysID;
 }
 
@@ -8497,6 +8345,7 @@ static s32 cmdq_core_consume_waiting_list(struct work_struct *_ignore,
 	uint32_t user_list_count = 0;
 	uint32_t index = 0;
 	CMDQ_TIME consume_cost;
+	bool force_inorder = false;
 
 	/* when we're suspending, do not execute any tasks. delay & hold them. */
 	if (gCmdqSuspended)
@@ -8515,6 +8364,13 @@ static s32 cmdq_core_consume_waiting_list(struct work_struct *_ignore,
 	list_for_each_safe(p, n, &gCmdqContext.taskWaitList) {
 		struct TaskStruct *pTask = list_entry(p, struct TaskStruct,
 			listEntry);
+
+		if (force_inorder && pTask->force_inorder) {
+			CMDQ_LOG(
+				"skip force inorder handle:0x%p engine:0x%llx\n",
+				pTask, pTask->engineFlag);
+			continue;
+		}
 
 		/* check if task from client and no buffer */
 		if (pTask->is_client_buffer &&
@@ -8556,6 +8412,12 @@ static s32 cmdq_core_consume_waiting_list(struct work_struct *_ignore,
 
 		if (thread == CMDQ_INVALID_THREAD) {
 			/* have to wait, remain in wait list */
+			if (pTask->force_inorder) {
+				CMDQ_LOG(
+					"begin force inorder handle:0x%p engine:0x%llx\n",
+					pTask, pTask->engineFlag);
+				force_inorder = true;
+			}
 			CMDQ_MSG("<--THREAD: acquire thread fail, need to wait\n");
 			if (needLog == true) {
 				/* task wait too long */

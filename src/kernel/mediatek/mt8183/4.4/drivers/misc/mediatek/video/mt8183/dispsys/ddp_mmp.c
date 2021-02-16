@@ -515,7 +515,7 @@ void ddp_mmp_wdma_layer(struct WDMA_CONFIG_STRUCT *wdma_layer, unsigned int wdma
 		DDPPR_ERR("dprec_mmp_dump_wdma_layer is error %d\n", wdma_num);
 		return;
 	}
-
+	Bitmap.p_data = 0;
 	Bitmap.data1 = wdma_layer->dstAddress;
 	Bitmap.width = wdma_layer->srcWidth;
 	Bitmap.height = wdma_layer->srcHeight;

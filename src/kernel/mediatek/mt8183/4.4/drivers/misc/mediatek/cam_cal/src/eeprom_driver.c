@@ -158,10 +158,13 @@ static int EEPROM_get_cmd_info(unsigned int sensorID, struct stCAM_CAL_CMD_INFO_
 
 #if defined(CONFIG_CAM_OTP_DATA_USE_IDME)
 	if (sensorID == HI556_SENSOR_ID ||
-	    sensorID == OV02B_SENSOR_ID ||
-	    sensorID == GC5035_SENSOR_ID ||
-	    sensorID == GC02M1TR_SENSOR_ID ||
-	    sensorID == GC02M1TRSEC_SENSOR_ID) {
+		sensorID == HI556SEC_SENSOR_ID ||
+		sensorID == OV02B_SENSOR_ID ||
+		sensorID == OV02BSEC_SENSOR_ID ||
+		sensorID == GC5035_SENSOR_ID ||
+		sensorID == GC5035SEC_SENSOR_ID ||
+		sensorID == GC02M1TR_SENSOR_ID ||
+		sensorID == GC02M1TRSEC_SENSOR_ID) {
 		use_idme = true;
 	}
 #endif
@@ -635,8 +638,11 @@ static long EEPROM_drv_ioctl(
 
 #if defined(CONFIG_CAM_OTP_DATA_USE_IDME)
 	if (ptempbuf->sensorID == HI556_SENSOR_ID ||
+		ptempbuf->sensorID == HI556SEC_SENSOR_ID ||
 		ptempbuf->sensorID == OV02B_SENSOR_ID ||
+		ptempbuf->sensorID == OV02BSEC_SENSOR_ID ||
 		ptempbuf->sensorID == GC5035_SENSOR_ID ||
+		ptempbuf->sensorID == GC5035SEC_SENSOR_ID ||
 		ptempbuf->sensorID == GC02M1TR_SENSOR_ID ||
 		ptempbuf->sensorID == GC02M1TRSEC_SENSOR_ID) {
 		use_idme = true;
@@ -651,10 +657,7 @@ static long EEPROM_drv_ioctl(
 		do_gettimeofday(&ktv1);
 #endif
 
-		if (use_idme)
-			return -EFAULT;
-
-		if (EEPROM_set_i2c_bus(ptempbuf->deviceID) != 0) {
+		if (use_idme || EEPROM_set_i2c_bus(ptempbuf->deviceID) != 0) {
 			PK_DBG("deviceID Error!\n");
 			kfree(pBuff);
 			kfree(pu1Params);

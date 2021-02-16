@@ -108,7 +108,7 @@
 #define REG_CM_CAP_EN_ADDR	0x00B6
 /* FOD parameters addr, 16 bytes */
 #define REG_FOD_COEF_ADDR	0x0068
-#define REG_FOD_DUMP_MAX	0x0077
+#define REG_FOD_DUMP_MAX	0x0073
 #define REG_FC_VOLTAGE		0x0078
 #define REG_TX_ID			0x011A	/* 2 bytes */
 #define REG_OVP_SEL			0x014A	/* 1 bytes */
@@ -220,8 +220,8 @@
 #define EOP_OVER_VOLT		0x04
 #define EOP_OVER_CURRENT	0x05
 
-#define FOD_COEF_ARRY_LENGTH	8
-#define FOD_COEF_PARAM_LENGTH	16
+#define FOD_COEF_ARRY_LENGTH	6
+#define FOD_COEF_PARAM_LENGTH	12
 
 #define P9415_DIE_TEMP_DEFAULT	-177
 
@@ -311,6 +311,8 @@ union fw_ver {
 	};
 };
 
+#define SW_FOD_RECORD_SIZE	4
+
 struct p9415_dev {
 	char *name;
 	struct i2c_client *client;
@@ -327,6 +329,7 @@ struct p9415_dev {
 	struct power_supply_config wpc_cfg;
 	struct delayed_work wpc_init_work;
 	struct delayed_work fast_charging_work;
+	struct delayed_work bpp_switch_work;
 	struct p9415_reg reg;
 	struct power_supply *wpc_psy;
 
@@ -340,12 +343,13 @@ struct p9415_dev {
 	struct pinctrl_state *wpc_disable;
 	struct pinctrl_state *epp_enable;
 	struct pinctrl_state *epp_disable;
-	struct pinctrl_state *vout_enable;
-	struct pinctrl_state *vout_disable;
 	struct pinctrl_state *fw_dl_enable;
 	struct pinctrl_state *fw_dl_disable;
+	struct pinctrl_state *sleep_enable;
+	struct pinctrl_state *sleep_disable;
 	bool epp_en;
 	bool vout_en;
+	bool support_sleep_en;
 	bool fw_dl_en;
 	bool wpc_en;
 	/* communication cap enable */
@@ -364,7 +368,7 @@ struct p9415_dev {
 	int wpc_mivr[CHARGE_MODE_MAX];
 	struct p9415_fodcoeftype bpp_5w_fod[FOD_COEF_ARRY_LENGTH];
 	struct p9415_fodcoeftype epp_10w_fod[FOD_COEF_ARRY_LENGTH];
-	struct p9415_fodcoeftype epp_15w_fod[FOD_COEF_ARRY_LENGTH];
+	struct p9415_fodcoeftype bpp_plus_15w_fod[FOD_COEF_ARRY_LENGTH];
 	struct switch_dev dock_state;
 	bool is_hv_adapter;
 	bool is_enabled;
@@ -372,7 +376,7 @@ struct p9415_dev {
 	u8 over_reason;
 	u8 bpp_5w_fod_num;
 	u8 epp_10w_fod_num;
-	u8 epp_15w_fod_num;
+	u8 bpp_plus_15w_fod_num;
 	u8 dev_auth_retry;
 	atomic_t vswitch_retry;
 	atomic_t vswitch_done;
@@ -388,6 +392,12 @@ struct p9415_dev {
 	struct input_dev *input_dev;
 	struct notifier_block pm_notifier;
 	bool screen_on;
+
+	int sw_fod_count;
+	struct timespec sw_fod_time_record[SW_FOD_RECORD_SIZE];
+
+	int throttle_threshold;
+	int throttle_hysteresis_threshold;
 };
 
 enum dock_state_type {

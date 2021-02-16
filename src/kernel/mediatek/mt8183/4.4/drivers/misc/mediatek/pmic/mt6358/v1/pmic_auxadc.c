@@ -189,6 +189,25 @@ int wk_vbat_cali(int vbat_out, int vthr)
 
 void wk_auxadc_bgd_ctrl(unsigned char en)
 {
+	static unsigned int bat_temp_volt_max_bak;
+	static unsigned int bat_temp_volt_min_bak;
+
+	if (en == 0) {
+		bat_temp_volt_max_bak
+		= pmic_get_register_value(PMIC_AUXADC_BAT_TEMP_VOLT_MAX);
+		bat_temp_volt_min_bak
+		= pmic_get_register_value(PMIC_AUXADC_BAT_TEMP_VOLT_MIN);
+		pmic_set_register_value(
+			PMIC_AUXADC_BAT_TEMP_VOLT_MAX, 0xFFF);
+		pmic_set_register_value(
+			PMIC_AUXADC_BAT_TEMP_VOLT_MIN, 0x0);
+	} else {
+		pmic_set_register_value(
+			PMIC_AUXADC_BAT_TEMP_VOLT_MAX, bat_temp_volt_max_bak);
+		pmic_set_register_value(
+			PMIC_AUXADC_BAT_TEMP_VOLT_MIN, bat_temp_volt_min_bak);
+	}
+
 	pmic_config_interface(PMIC_AUXADC_BAT_TEMP_IRQ_EN_MAX_ADDR, en,
 		PMIC_AUXADC_BAT_TEMP_IRQ_EN_MAX_MASK,
 		PMIC_AUXADC_BAT_TEMP_IRQ_EN_MAX_SHIFT);

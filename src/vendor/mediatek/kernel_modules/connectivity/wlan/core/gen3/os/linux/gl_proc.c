@@ -98,6 +98,8 @@ struct BLOCKED_READING_PROC_T {
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
+extern WAKEUP_STATISTIC g_arWakeupStatistic[WAKEUP_TYPE_NUM];
+extern UINT_32 g_wake_event_count[EVENT_ID_END];
 
 /*******************************************************************************
 *                           P R I V A T E   D A T A
@@ -1306,28 +1308,28 @@ static ssize_t interrupt_stat_read(struct file *filp,
 	if (*f_pos > 0)
 		return 0;
 
-	prWakeupSta = prAdapter->arWakeupStatistic;
+	prWakeupSta = g_arWakeupStatistic;
 	pos += snprintf(aucProcBuf, sizeof(aucProcBuf),
-			"Abnormal Interrupt:%d\n"
-			"Software Interrupt:%d\n"
-			"TX Interrupt:%d\n"
-			"RX data:%d\n"
-			"RX Event:%d\n"
-			"RX mgmt:%d\n"
-			"RX others:%d\n",
-			prWakeupSta[0].u2Count,
-			prWakeupSta[1].u2Count,
-			prWakeupSta[2].u2Count,
-			prWakeupSta[3].u2Count,
-			prWakeupSta[4].u2Count,
-			prWakeupSta[5].u2Count,
-			prWakeupSta[6].u2Count);
+			"Abnormal Interrupt:%u\n"
+			"Software Interrupt:%u\n"
+			"TX Interrupt:%u\n"
+			"RX data:%u\n"
+			"RX Event:%u\n"
+			"RX mgmt:%u\n"
+			"RX others:%u\n",
+			prWakeupSta[0].u4Count,
+			prWakeupSta[1].u4Count,
+			prWakeupSta[2].u4Count,
+			prWakeupSta[3].u4Count,
+			prWakeupSta[4].u4Count,
+			prWakeupSta[5].u4Count,
+			prWakeupSta[6].u4Count);
 
 	for (i = 0; i < EVENT_ID_END; i++) {
-		if (prAdapter->wake_event_count[i] > 0)
+		if (g_wake_event_count[i] > 0)
 			pos += snprintf(aucProcBuf + pos, sizeof(aucProcBuf) - pos,
-					"RX EVENT[0x%0x]:%d\n", i,
-					prAdapter->wake_event_count[i]);
+					"RX EVENT[0x%0x]:%u\n", i,
+					g_wake_event_count[i]);
 	}
 
 	PROC_READ_COMMON(buf, f_pos, u4CopySize);

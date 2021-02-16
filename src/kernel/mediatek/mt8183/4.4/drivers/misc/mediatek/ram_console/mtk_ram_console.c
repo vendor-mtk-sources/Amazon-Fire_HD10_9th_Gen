@@ -228,7 +228,13 @@ struct ram_console_buffer {
 	uint32_t off_lk;
 	uint32_t off_llk;	/* last lk: struct reboot_reason_lk */
 	uint32_t sz_lk;
+#ifdef CONFIG_MTK_AEE_SAVE_DEBUGINFO_RESERVED_BUFFER
+	uint32_t addr_kedump; /* save kedump reserved buffer start addr */
+	uint32_t sz_kedump; /* save kedump reserved buffer size */
+	uint32_t padding[1];
+#else
 	uint32_t padding[3];
+#endif
 	uint32_t sz_buffer;
 	uint32_t off_linux;	/* struct last_reboot_reason */
 	uint32_t off_console;
@@ -237,6 +243,7 @@ struct ram_console_buffer {
 	uint32_t log_start;
 	uint32_t log_size;
 	uint32_t sz_console;
+
 };
 
 #define REBOOT_REASON_SIG (0x43474244)	/* DBRR */
@@ -659,7 +666,7 @@ static int __init ram_console_init(struct ram_console_buffer *buffer, size_t buf
 	return 0;
 }
 
-#if defined(CONFIG_MTK_RAM_CONSOLE_USING_DRAM)
+#if defined(CONFIG_MTK_RAM_CONSOLE_USING_DRAM) || defined(CONFIG_MTK_AEE_SAVE_DEBUGINFO_RESERVED_BUFFER)
 static void *remap_lowmem(phys_addr_t start, phys_addr_t size)
 {
 	struct page **pages;
@@ -790,6 +797,53 @@ static const struct file_operations ram_console_file_ops = {
 	.release = single_release,
 };
 
+#ifdef CONFIG_MTK_AEE_SAVE_DEBUGINFO_RESERVED_BUFFER
+#define KEDUMP_BUFFER_SIG 0x504D5544454B
+
+struct kedump_reserved_buffer {
+	u64 sig;
+	u32 log_offset;
+};
+
+static int kedump_console_show(struct seq_file *m, void *v)
+{
+	struct kedump_reserved_buffer *buffer = NULL;
+
+	if ((ram_console_old->addr_kedump == 0) || (ram_console_old->sz_kedump == 0)) {
+		pr_err("kedump_console: addr/size is 0\n");
+		return 0;
+	}
+
+	buffer = remap_lowmem(ram_console_old->addr_kedump, ram_console_old->sz_kedump);
+
+	if (buffer == NULL) {
+		pr_err("kedump_console: ioremap failed\n");
+		return 0;
+	}
+
+	if (buffer->sig == KEDUMP_BUFFER_SIG) {
+		seq_write(m, buffer, ram_console_old->sz_kedump);
+	} else {
+		seq_puts(m, "sig mismatch, the reserved memory may be corrupted!\n");
+	}
+
+	return 0;
+}
+
+static int kedump_console_file_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, kedump_console_show, inode->i_private);
+}
+
+static const struct file_operations kedump_console_file_ops = {
+	.owner = THIS_MODULE,
+	.open = kedump_console_file_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+#endif
+
 static int __init ram_console_late_init(void)
 {
 	struct proc_dir_entry *entry;
@@ -805,6 +859,15 @@ static int __init ram_console_late_init(void)
 		ram_console_old = NULL;
 		return 0;
 	}
+
+#ifdef CONFIG_MTK_AEE_SAVE_DEBUGINFO_RESERVED_BUFFER
+	entry = proc_create("last_kedump_info", 0444, NULL, &kedump_console_file_ops);
+	if (!entry) {
+		pr_err("kedump_console: failed to create proc entry\n");
+		return 0;
+	}
+#endif
+
 	return 0;
 }
 

@@ -194,6 +194,20 @@ struct IMGSENSOR_HW_POWER_SEQ sensor_power_sequence[] = {
 	  },
 	 },
 #endif
+#if defined(HI556SEC_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_HI556SEC_MIPI_RAW,
+	 {
+	  {RST, Vol_Low, 0, Vol_Low},
+	  {AVDD, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {AVDD, Vol_High, 5, Vol_Low},
+	  {DVDD, Vol_1200, 5, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low},
+	  {RST, Vol_High, 2, Vol_Low}
+	  },
+	 },
+#endif
 #if defined(GC5035_MIPI_RAW)
 	{
 	 SENSOR_DRVNAME_GC5035_MIPI_RAW,
@@ -208,9 +222,37 @@ struct IMGSENSOR_HW_POWER_SEQ sensor_power_sequence[] = {
 	  },
 	 },
 #endif
+#if defined(GC5035SEC_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_GC5035SEC_MIPI_RAW,
+	 {
+	  {RST, Vol_Low, 0, Vol_Low},
+	  {AVDD, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {DVDD, Vol_1200, 5, Vol_Low},
+	  {AVDD, Vol_High, 5, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low},
+	  {RST, Vol_High, 2, Vol_Low}
+	  },
+	 },
+#endif
 #if defined(OV02B_MIPI_RAW)
 	{
 	 SENSOR_DRVNAME_OV02B_MIPI_RAW,
+	 {
+	  {RST, Vol_Low, 0, Vol_Low},
+	  {PDN, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {AVDD, Vol_2800, 5, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low},
+	  {PDN, Vol_High, 4, Vol_Low},
+	  {RST, Vol_High, 2, Vol_Low}
+	  },
+	 },
+#endif
+#if defined(OV02BSEC_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_OV02BSEC_MIPI_RAW,
 	 {
 	  {RST, Vol_Low, 0, Vol_Low},
 	  {PDN, Vol_Low, 0, Vol_Low},
@@ -265,6 +307,19 @@ struct IMGSENSOR_HW_POWER_SEQ sensor_power_sequence_later[] = {
 	  },
 	 },
 #endif
+#if defined(HI556SEC_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_HI556SEC_MIPI_RAW,
+	 {
+	  {RST, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {AVDD, Vol_2800, 5, Vol_Low},
+	  {DVDD, Vol_1200, 5, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low},
+	  {RST, Vol_High, 2, Vol_Low}
+	  },
+	 },
+#endif
 #if defined(GC5035_MIPI_RAW)
 	{
 	 SENSOR_DRVNAME_GC5035_MIPI_RAW,
@@ -278,9 +333,36 @@ struct IMGSENSOR_HW_POWER_SEQ sensor_power_sequence_later[] = {
 	  },
 	 },
 #endif
+#if defined(GC5035SEC_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_GC5035SEC_MIPI_RAW,
+	 {
+	  {RST, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {DVDD, Vol_1200, 5, Vol_Low},
+	  {AVDD, Vol_2800, 5, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low},
+	  {RST, Vol_High, 2, Vol_Low}
+	  },
+	 },
+#endif
 #if defined(OV02B_MIPI_RAW)
 	{
 	 SENSOR_DRVNAME_OV02B_MIPI_RAW,
+	 {
+	  {RST, Vol_Low, 0, Vol_Low},
+	  {PDN, Vol_Low, 0, Vol_Low},
+	  {DOVDD, Vol_1800, 1, Vol_Low},
+	  {AVDD, Vol_2800, 5, Vol_Low},
+	  {SensorMCLK, Vol_High, 0, Vol_Low},
+	  {PDN, Vol_High, 4, Vol_Low},
+	  {RST, Vol_High, 2, Vol_Low}
+	  },
+	 },
+#endif
+#if defined(OV02BSEC_MIPI_RAW)
+	{
+	 SENSOR_DRVNAME_OV02BSEC_MIPI_RAW,
 	 {
 	  {RST, Vol_Low, 0, Vol_Low},
 	  {PDN, Vol_Low, 0, Vol_Low},
