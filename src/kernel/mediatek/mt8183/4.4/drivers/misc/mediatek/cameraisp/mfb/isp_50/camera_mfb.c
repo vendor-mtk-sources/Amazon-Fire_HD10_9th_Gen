@@ -2098,7 +2098,12 @@ static long MFB_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 		{
 			if (copy_from_user(&RegIo, (void *)Param, sizeof(MFB_REG_IO_STRUCT)) == 0) {
 				/* 2nd layer behavoir of copy from user is implemented in MFB_ReadReg(...) */
-				Ret = MFB_ReadReg(&RegIo);
+				if (RegIo.Count <= MFB_REG_RANGE)
+					Ret = MFB_ReadReg(&RegIo);
+				else {
+					log_err("MFB_READ_REGISTER Count error");
+					Ret = -EFAULT;
+				}
 			} else {
 				log_err("MFB_READ_REGISTER copy_from_user failed");
 				Ret = -EFAULT;

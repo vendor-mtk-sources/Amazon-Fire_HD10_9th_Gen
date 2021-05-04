@@ -812,6 +812,9 @@ static int proc_dump_log_show(struct seq_file *m, void *v)
 	seq_puts(m, "103: send CHR FULL\n");
 	seq_puts(m, "104: disable NAFG interrupt\n");
 	seq_puts(m, "105: show daemon pid\n");
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	seq_puts(m, "201: show current ZCV status\n");
+#endif
 
 	seq_printf(m, "current command:%d\n", gm.proc_cmd_id);
 
@@ -823,6 +826,7 @@ static int proc_dump_log_show(struct seq_file *m, void *v)
 	case 2:
 	case 3:
 	case 4:
+	case 201:
 		wakeup_fg_algo_cmd(
 			FG_INTR_KERNEL_CMD, FG_KERNEL_CMD_DUMP_LOG,
 			gm.proc_cmd_id);
@@ -3363,6 +3367,103 @@ static ssize_t store_fake_rtc_soc(
 static DEVICE_ATTR(fake_rtc_soc, 0664,
 	show_fake_rtc_soc, store_fake_rtc_soc);
 
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+static ssize_t use_aging_zcv_show(
+	struct device *dev, struct device_attribute *attr,
+	char *buf)
+{
+	return sprintf(buf, "%d\n", gm.use_aging_zcv);
+}
+static ssize_t use_aging_zcv_store(
+	struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t size)
+{
+	unsigned long val = 0;
+	int ret;
+
+	bm_err("[%s]\n", __func__);
+
+	if (buf != NULL && size != 0) {
+		bm_err("[%s] buf is %s\n",
+			__func__, buf);
+		ret = kstrtoul(buf, 10, &val);
+		if (val < 0) {
+			bm_err(
+				"[%s] val is %d ??\n",
+				__func__,
+				(int)val);
+			val = 0;
+		}
+
+		if (val == 1)
+			wakeup_fg_algo_cmd(
+				FG_INTR_KERNEL_CMD,
+				FG_KERNEL_CMD_USE_AGING_ZCV,
+				val);
+		else
+			return size;
+
+		bm_err(
+			"[%s] Use aging zcv = %d\n",
+			__func__,
+			(int)val);
+	}
+
+	return size;
+}
+
+static ssize_t disable_aging_zcv_show(
+	struct device *dev, struct device_attribute *attr,
+	char *buf)
+{
+	return sprintf(buf, "%d\n", gm.use_aging_zcv);
+}
+static ssize_t disable_aging_zcv_store(
+	struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t size)
+{
+	unsigned long val = 0;
+	int ret;
+
+	bm_err("[%s]\n", __func__);
+
+	if (buf != NULL && size != 0) {
+		bm_err("[%s] buf is %s\n",
+			__func__, buf);
+		ret = kstrtoul(buf, 10, &val);
+		if (val < 0) {
+			bm_err(
+				"[%s] val is %d ??\n",
+				__func__,
+				(int)val);
+			val = 0;
+		}
+
+		if (val == 1) {
+			val = 0;
+			wakeup_fg_algo_cmd(
+				FG_INTR_KERNEL_CMD,
+				FG_KERNEL_CMD_USE_AGING_ZCV,
+				val);
+		} else {
+			return size;
+		}
+
+		bm_err(
+			"[%s] Use aging zcv = %d\n",
+			__func__,
+			(int)val);
+	}
+
+	return size;
+}
+
+static DEVICE_ATTR(use_aging_zcv, 0664,
+	use_aging_zcv_show, use_aging_zcv_store);
+static DEVICE_ATTR(disable_aging_zcv, 0664,
+	disable_aging_zcv_show, disable_aging_zcv_store);
+#endif
+
 /* /////////////////////////////////////*/
 /* // Create File For EM : Power_On_Voltage */
 /* /////////////////////////////////////*/
@@ -3942,6 +4043,13 @@ static int __init battery_probe(struct platform_device *dev)
 		&dev_attr_vendor_name);
 	ret_device_file = device_create_file(&(dev->dev),
 		&dev_attr_fake_rtc_soc);
+
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	ret_device_file = device_create_file(&(dev->dev),
+		&dev_attr_use_aging_zcv);
+	ret_device_file = device_create_file(&(dev->dev),
+		&dev_attr_disable_aging_zcv);
+#endif
 
 	if (gm.use_adc_id) {
 		device_create_file(&(dev->dev), &dev_attr_cell_vendor_name);

@@ -29,6 +29,7 @@
 #include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/amzn_integrity_module.h>
+#include <mt-plat/charger_type.h>
 
 #ifdef CONFIG_AMAZON_METRICS_LOG
 #include <linux/metricslog.h>
@@ -288,13 +289,15 @@ void stress_pulse(struct integrity_metrics_data *batt_data,
  * @Input         temp          Battery temperature in C
  * @Input         temp_virtual  Virtual Sensor temperature in C
  * @Input         chg_sts       Charger status
+ * @Input         chg_type      Charger type
  * @Input         elaps_sec     Monotonic elapsed seconds since device power on
  * @Return        none
  */
 void init_integrity_batt_data(struct integrity_metrics_data *batt_data,
 			      unsigned int batt_volt, unsigned int vusb,
 			      int soc, int temp, int temp_virtual,
-			      unsigned int chg_sts, unsigned long elaps_sec)
+			      unsigned int chg_sts, unsigned int chg_type,
+			      unsigned long elaps_sec)
 {
 	batt_data->batt_volt_avg = 0;
 	batt_data->batt_volt_init = batt_volt;
@@ -305,6 +308,7 @@ void init_integrity_batt_data(struct integrity_metrics_data *batt_data,
 	batt_data->usb_volt_peak = vusb;
 	batt_data->usb_volt_min = VUSB_CEILING;
 	batt_data->chg_sts = chg_sts;
+	batt_data->chg_type = chg_type;
 	batt_data->soc = soc;
 	batt_data->fsoc = soc;
 
@@ -328,6 +332,7 @@ void init_integrity_batt_data(struct integrity_metrics_data *batt_data,
  * @Input          soc           Battery state of charge in percent
  * @Input          cycle_count   Battery cycle count
  * @Input          chg_sts       Charger status
+ * @Input          chg_type      Charger type
  * @Input          batt_data     Pointer to integrity structure
  * @Input          send_metrics  Pointer to function that logs metric data
  * @Return         none
@@ -335,7 +340,7 @@ void init_integrity_batt_data(struct integrity_metrics_data *batt_data,
 void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 			      unsigned int vusb, int temp, int virtual_temp,
 			      int soc, unsigned int cycle_count,
-			      unsigned int chg_sts,
+			      unsigned int chg_sts, unsigned int chg_type,
 			      struct integrity_metrics_data *batt_data)
 {
 	unsigned long delta_elaps_sec;
@@ -350,7 +355,7 @@ void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 		elaps_sec_start = elaps_sec;
 		batt_data->stress_period = 0;
 		init_integrity_batt_data(batt_data, batt_volt, vusb, soc, temp,
-					 virtual_temp, chg_sts, elaps_sec);
+					 virtual_temp, chg_sts, chg_type, elaps_sec);
 		init_stress_metric(batt_data);
 	}
 
@@ -380,6 +385,7 @@ void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 				batt_data->usb_volt,
 				batt_data->usb_volt_min,
 				(batt_data->usb_volt_avg / batt_data->elaps_sec),
+				batt_data->chg_type,
 				(batt_data->batt_volt_avg / batt_data->elaps_sec),
 				batt_data->fsoc,
 				batt_data->n_count,
@@ -391,7 +397,7 @@ void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 		}
 		init_integrity_batt_data(batt_data, batt_volt,
 					 vusb, soc, temp,
-					 virtual_temp, chg_sts,
+					 virtual_temp, chg_sts, chg_type,
 					 elaps_sec);
 		batt_data->n_count++;
 	}
@@ -401,7 +407,7 @@ void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 		return;
 
 	batt_data->chg_sts = chg_sts;
-
+	batt_data->chg_type = chg_type;
 	batt_data->batt_volt_avg += (batt_volt * delta_elaps_sec);
 
 	batt_data->usb_volt = vusb;
@@ -430,6 +436,7 @@ void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 	snprintf(g_metrics_buf, sizeof(g_metrics_buf),
 		 CHARGE_STATE_DEBUG_STRING,
 		 batt_data->chg_sts,
+		 chg_type,
 		 batt_data->batt_volt_avg,
 		 batt_data->usb_volt_avg,
 		 batt_data->usb_volt_min,
@@ -458,7 +465,7 @@ static int get_battery_property(struct integrity_driver_data *data, int type)
 	int property = 0;
 	int ret = 0;
 
-	if (!data->usb_psy || !data->batt_psy)
+	if (!data->usb_psy || !data->batt_psy || !data->charger_psy)
 		return -1;
 
 	switch (type) {
@@ -481,6 +488,10 @@ static int get_battery_property(struct integrity_driver_data *data, int type)
 	case TYPE_CHG_STATE:
 		psy = data->batt_psy;
 		property = POWER_SUPPLY_PROP_STATUS;
+		break;
+	case TYPE_CHG_TYPE:
+		psy = data->charger_psy;
+		property = POWER_SUPPLY_PROP_CHARGER_TYPE;
 		break;
 	case TYPE_VBUS:
 		psy = data->usb_psy;
@@ -505,7 +516,7 @@ static void integrity_module_routine(struct work_struct *work)
 	struct integrity_driver_data *data = container_of(work,
 				struct integrity_driver_data, dwork.work);
 	struct timespec diff, current_kernel_time;
-	int soc, vbus, vbat, temp, cycle, temp_virtual, chg_sts;
+	int soc, vbus, vbat, temp, cycle, temp_virtual, chg_sts, chg_type;
 	unsigned long elaps_sec;
 
 	soc = get_battery_property(data, TYPE_SOC);
@@ -514,19 +525,22 @@ static void integrity_module_routine(struct work_struct *work)
 	temp = get_battery_property(data, TYPE_TBAT) / 10;
 	cycle = get_battery_property(data, TYPE_BAT_CYCLE);
 	chg_sts = get_battery_property(data, TYPE_CHG_STATE);
-	if (soc < 0 || vbus < 0 || vbat < 0 || cycle < 0 || chg_sts < 0)
+	chg_type = get_battery_property(data, TYPE_CHG_TYPE);
+	if (soc < 0 || vbus < 0 || vbat < 0 || cycle < 0 || chg_sts < 0 || chg_type < 0)
+		goto skip;
+	if (!(chg_type >= CHARGER_UNKNOWN && chg_type <= WIRELESS_CHARGER_15W))
 		goto skip;
 
 	temp_virtual = get_virtualsensor_temp();
 	get_monotonic_boottime(&current_kernel_time);
 	diff = timespec_sub(current_kernel_time, data->init_time);
 	elaps_sec = diff.tv_sec;
-	pr_debug("integrity: soc[%d] vbus[%d] vbat[%d] tbat[%d] cycle[%d] chg_sts[%d] t_v[%d] elaps[%llu]\n",
+	pr_debug("integrity: soc[%d] vbus[%d] vbat[%d] tbat[%d] cycle[%d] chg_sts[%d] chg_type[%d] t_v[%d] elaps[%llu]\n",
 		 soc, vbus, vbat, temp, cycle,
-		 chg_sts, temp_virtual, elaps_sec);
+		 chg_sts, chg_type, temp_virtual, elaps_sec);
 	push_integrity_batt_data(elaps_sec, vbat, vbus, temp,
 				 temp_virtual, soc, cycle,
-				 chg_sts, &data->metrics);
+				 chg_sts, chg_type, &data->metrics);
 
 skip:
 	if (data->is_suspend)
@@ -582,6 +596,12 @@ static int integrity_module_probe(struct platform_device *pdev)
 	if (!data->batt_psy) {
 		ret = -EPROBE_DEFER;
 		goto out_mem;
+	}
+
+	data->charger_psy = power_supply_get_by_name("charger");
+	if (!data->charger_psy) {
+		ret = -EPROBE_DEFER;
+		goto out;
 	}
 
 	data->notifier.notifier_call = integrity_module_pm_event;

@@ -224,6 +224,12 @@ struct tcpc_ops {
 #endif	/* CONFIG_TCPC_AUTO_DISCHARGE_IC */
 #endif	/* CONFIG_TYPEC_CAP_AUTO_DISCHARGE */
 
+#ifdef CONFIG_TYPEC_CAP_FORCE_DISCHARGE
+#ifdef CONFIG_TCPC_FORCE_DISCHARGE_IC
+	int (*set_force_discharge)(struct tcpc_device *tcpc, bool en, int mv);
+#endif	/* CONFIG_TCPC_FORCE_DISCHARGE_IC */
+#endif	/* CONFIG_TYPEC_CAP_FORCE_DISCHARGE */
+
 #ifdef CONFIG_USB_POWER_DELIVERY
 	int (*set_msg_header)(struct tcpc_device *tcpc,
 			uint8_t power_role, uint8_t data_role);
@@ -241,11 +247,6 @@ struct tcpc_ops {
 	int (*retransmit)(struct tcpc_device *tcpc);
 #endif	/* CONFIG_USB_PD_RETRY_CRC_DISCARD */
 
-#ifdef CONFIG_TYPEC_CAP_FORCE_DISCHARGE
-#ifdef CONFIG_TCPC_FORCE_DISCHARGE_IC
-	int (*set_force_discharge)(struct tcpc_device *tcpc, bool en, int mv);
-#endif	/* CONFIG_TCPC_FORCE_DISCHARGE_IC */
-#endif	/* CONFIG_TYPEC_CAP_FORCE_DISCHARGE */
 
 #endif	/* CONFIG_USB_POWER_DELIVERY */
 };
@@ -474,6 +475,12 @@ struct tcpc_device {
 	uint8_t dual_role_vconn;
 #endif /* CONFIG_DUAL_ROLE_USB_INTF */
 
+#ifdef CONFIG_TYPEC_CAP_FORCE_DISCHARGE
+#ifdef CONFIG_TCPC_FORCE_DISCHARGE_IC
+	bool pd_force_discharge;
+#endif	/* CONFIG_TCPC_FORCE_DISCHARGE_IC */
+#endif	/* CONFIG_TYPEC_CAP_FORCE_DISCHARGE */
+
 #ifdef CONFIG_USB_POWER_DELIVERY
 	/* Event */
 	uint8_t pd_event_count;
@@ -517,11 +524,6 @@ struct tcpc_device {
 	bool pd_discard_pending;
 #endif	/* CONFIG_USB_PD_RETRY_CRC_DISCARD */
 
-#ifdef CONFIG_TYPEC_CAP_FORCE_DISCHARGE
-#ifdef CONFIG_TCPC_FORCE_DISCHARGE_IC
-	bool pd_force_discharge;
-#endif	/* CONFIG_TCPC_FORCE_DISCHARGE_IC */
-#endif	/* CONFIG_TYPEC_CAP_FORCE_DISCHARGE */
 
 #ifdef CONFIG_USB_PD_REV30
 	uint8_t pd_retry_count;

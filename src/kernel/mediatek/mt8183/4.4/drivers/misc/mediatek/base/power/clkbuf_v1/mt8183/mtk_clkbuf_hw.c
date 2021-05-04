@@ -17,6 +17,8 @@
  *
  */
 
+#include <linux/of_gpio.h>
+#include <linux/gpio.h>
 #include <mtk_spm.h>
 #include <mtk_clkbuf_ctl.h>
 #include <mtk_clkbuf_common.h>
@@ -1262,6 +1264,103 @@ static ssize_t clk_buf_debug_show(struct kobject *kobj, struct kobj_attribute *a
 	return len;
 }
 
+#if defined(CONFIG_CLKBUF_MT8183_XOWCN_COCLOCK)
+static bool is_clk_buf_xowcn_coclock(struct device_node *np)
+{
+	int xowcn_gpio, ret;
+
+	xowcn_gpio = of_get_named_gpio(np, "xowcn-gpios", 0);
+	if (xowcn_gpio < 0) {
+		pr_info("%s, get gpio fail\n", __func__);
+		return false;
+	}
+
+	ret = gpio_request(xowcn_gpio, "xowcn_gpio");
+	if (ret) {
+		pr_info("%s, request gpio fail, ret=%d\n", __func__, ret);
+		return false;
+	}
+
+	ret = gpio_direction_input(xowcn_gpio);
+	if (ret) {
+		pr_info("%s, gpio direction input fail, ret=%d\n", __func__, ret);
+		gpio_free(xowcn_gpio);
+		return false;
+	}
+
+	ret = gpio_get_value(xowcn_gpio);
+	pr_info("%s, gpio value=%d\n", __func__, ret);
+
+	gpio_free(xowcn_gpio);
+
+	return ret ? true : false;
+}
+
+static void capid_trim_write(uint32_t cap_code)
+{
+	pmic_config_interface(PMIC_XO_COFST_FPM_ADDR, 0x0,
+			      PMIC_XO_COFST_FPM_MASK, PMIC_XO_COFST_FPM_SHIFT);
+	pmic_config_interface(PMIC_XO_CDAC_FPM_ADDR, cap_code,
+			      PMIC_XO_CDAC_FPM_MASK, PMIC_XO_CDAC_FPM_SHIFT);
+	pmic_config_interface(PMIC_XO_CORE_IDAC_FPM_ADDR, 0x2,
+			      PMIC_XO_CORE_IDAC_FPM_MASK, PMIC_XO_CORE_IDAC_FPM_SHIFT);
+	pmic_config_interface(PMIC_XO_AAC_FPM_SWEN_ADDR, 0x0,
+			      PMIC_XO_AAC_FPM_SWEN_MASK, PMIC_XO_AAC_FPM_SWEN_SHIFT);
+	mdelay(1);
+	pmic_config_interface(PMIC_XO_AAC_FPM_SWEN_ADDR, 0x1,
+			      PMIC_XO_AAC_FPM_SWEN_MASK, PMIC_XO_AAC_FPM_SWEN_SHIFT);
+	mdelay(5);
+}
+
+#define IDME_OF_COTMS_CAL       "/idme/co_tms_cal"
+static int clk_buf_set_capid_from_idme(void)
+{
+	struct device_node *np;
+	char *cotms_cal, *data;
+	char buf[32] = { 0 };
+	uint32_t capid;
+	int ret;
+
+	np = of_find_node_by_path(IDME_OF_COTMS_CAL);
+	if (!np) {
+		pr_info("%s, cannot find node %s\n", __func__, IDME_OF_COTMS_CAL);
+		return -ENODEV;
+	} else {
+		cotms_cal = (char *)of_get_property(np, "value", NULL);
+		if (!cotms_cal) {
+			pr_info("%s, cannot get cotms_cal value\n", __func__);
+			return -EINVAL;
+		} else {
+			strncpy(buf, cotms_cal, sizeof(buf));
+			cotms_cal = buf;
+			pr_info("%s, cotms_cal: %s\n", __func__, cotms_cal);
+		}
+	}
+
+	data = strsep(&cotms_cal, ",");
+	if (!data) {
+		pr_info("%s, cannot find capid in cotms_cal\n", __func__);
+		return -EINVAL;
+	} else
+		pr_info("%s, capid: %s\n", __func__, data);
+
+	ret = kstrtoint(data, 16, &capid);
+	if (ret) {
+		pr_info("%s: cannot parse capid, ret=%d\n", __func__, ret);
+		return ret;
+	}
+
+	if (capid > PMIC_XO_CDAC_FPM_MASK) {
+		pr_info("%s: invalid capid, %d\n", __func__, capid);
+		return -EINVAL;
+	}
+
+	capid_trim_write(capid);
+
+	return 0;
+}
+#endif
+
 DEFINE_ATTR_RW(clk_buf_ctrl);
 DEFINE_ATTR_RW(clk_buf_debug);
 
@@ -1317,6 +1416,16 @@ int clk_buf_dts_map(void)
 			CLK_BUF6_STATUS_PMIC = vals[5];
 			CLK_BUF7_STATUS_PMIC = vals[6];
 		}
+
+#if defined(CONFIG_CLKBUF_MT8183_XOWCN_COCLOCK)
+		if (is_clk_buf_xowcn_coclock(node)) {
+			CLK_BUF2_STATUS_PMIC = CLOCK_BUFFER_SW_CONTROL;
+			ret = clk_buf_set_capid_from_idme();
+			if (ret)
+				return ret;
+		}
+#endif
+
 		ret = of_property_read_u32_array(node, "mediatek,clkbuf-driving-current",
 						 vals, CLKBUF_NUM);
 		if (!ret) {

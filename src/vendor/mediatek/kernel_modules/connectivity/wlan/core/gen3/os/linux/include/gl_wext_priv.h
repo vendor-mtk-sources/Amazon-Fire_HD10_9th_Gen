@@ -133,6 +133,8 @@
 #define PRIV_CMD_TRIGGER_CHIP_RESET   43
 #endif
 
+#define PRIV_CMD_GET_BAND_WITH           44
+
 #if CFG_SUPPORT_QA_TOOL
 #define PRIV_QACMD_SET                  29
 #endif

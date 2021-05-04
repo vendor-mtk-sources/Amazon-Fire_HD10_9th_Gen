@@ -176,12 +176,20 @@ enum DRV_STATUS_T {
 /* Debug print argument for the OS system time */
 #define OS_SYSTIME_DBG_ARGUMENT(systime)    (systime)
 
+#if CFG_SHOW_FULL_MACADDR
 /* Debug print format string for the MAC Address */
 #define MACSTR          "%pM"
 /* "%02x:%02x:%02x:%02x:%02x:%02x" */
 
 /* Debug print argument for the MAC Address */
 #define MAC2STR(a)	a
+#else
+#define MACSTR          "%02x%02x%03x%02x"
+#define MAC2STR(a)   ((uint8_t *)a)[0], ((uint8_t *)a)[1], \
+                     ((uint8_t *)a)[2] + ((uint8_t *)a)[3] + ((uint8_t *)a)[4], \
+                     ((uint8_t *)a)[5]
+#endif
+
 /* ((PUINT_8)a)[0], ((PUINT_8)a)[1], ((PUINT_8)a)[2], ((PUINT_8)a)[3], ((PUINT_8)a)[4], ((PUINT_8)a)[5] */
 
 #if CFG_SHOW_IP

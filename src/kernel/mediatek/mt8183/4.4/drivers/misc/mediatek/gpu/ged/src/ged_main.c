@@ -110,34 +110,30 @@ static long ged_dispatch(struct file *pFile, GED_BRIDGE_PACKAGE *psBridgePackage
 	void *pvIn = NULL, *pvOut = NULL;
 	typedef int (ged_bridge_func_type)(void *, void *);
 	ged_bridge_func_type* pFunc = NULL;
-
 	size_t actualSize = 0;
 	size_t expectSize = 0;
 
-	/* We make sure the both size are GE 0 integer.
+	/* We make sure the both size are Great than 0 integer.
 	 */
-	if (psBridgePackageKM->i32InBufferSize >= 0 && psBridgePackageKM->i32OutBufferSize >= 0) {
+	if (psBridgePackageKM->i32InBufferSize > 0 &&
+		psBridgePackageKM->i32OutBufferSize > 0) {
 
-		if (psBridgePackageKM->i32InBufferSize > 0) {
-			pvIn = kmalloc(psBridgePackageKM->i32InBufferSize, GFP_KERNEL);
+		pvIn = kmalloc(psBridgePackageKM->i32InBufferSize, GFP_KERNEL);
 
-			if (pvIn == NULL)
-				goto dispatch_exit;
+		if (pvIn == NULL)
+			goto dispatch_exit;
 
-			if (ged_copy_from_user(pvIn,
-						psBridgePackageKM->pvParamIn,
-						psBridgePackageKM->i32InBufferSize) != 0) {
-				GED_LOGE("ged_copy_from_user fail\n");
-				goto dispatch_exit;
-			}
+		if (ged_copy_from_user(pvIn,
+					psBridgePackageKM->pvParamIn,
+					psBridgePackageKM->i32InBufferSize) != 0) {
+			GED_LOGE("ged_copy_from_user fail\n");
+			goto dispatch_exit;
 		}
 
-		if (psBridgePackageKM->i32OutBufferSize > 0) {
-			pvOut = kzalloc(psBridgePackageKM->i32OutBufferSize, GFP_KERNEL);
+		pvOut = kzalloc(psBridgePackageKM->i32OutBufferSize, GFP_KERNEL);
 
-			if (pvOut == NULL)
-				goto dispatch_exit;
-		}
+		if (pvOut == NULL)
+			goto dispatch_exit;
 
 		/* Make sure that the UM will never break the KM.
 		 * Check IO size are both matched the size of IO sturct.
@@ -186,7 +182,7 @@ static long ged_dispatch(struct file *pFile, GED_BRIDGE_PACKAGE *psBridgePackage
 			break;
 		case GED_BRIDGE_COMMAND_GE_ALLOC:
 			if (psBridgePackageKM->i32InBufferSize < sizeof(GED_BRIDGE_IN_GE_ALLOC)) {
-				GED_LOGE("ged: erro i32InBufferSize\n");
+				GED_LOGE("ged: erro i32InBufferSize = %d\n", psBridgePackageKM->i32InBufferSize);
 				goto dispatch_exit;
 			}
 			actualSize =
@@ -196,41 +192,44 @@ static long ged_dispatch(struct file *pFile, GED_BRIDGE_PACKAGE *psBridgePackage
 			expectSize =
 				((GED_BRIDGE_IN_GE_ALLOC *)pvIn)->region_num;
 			if (expectSize > actualSize) {
-				GED_LOGE("ged: expectSize > actualSize\n");
+				GED_LOGE("ged: expectSize > actualSize, expectSize = %zu, actualSize = %zu\n",
+					expectSize, actualSize);
 				goto dispatch_exit;
 			}
 			SET_FUNC_AND_CHECK(ged_bridge_ge_alloc, GE_ALLOC);
 			break;
 		case GED_BRIDGE_COMMAND_GE_GET:
-			if (psBridgePackageKM->i32InBufferSize < sizeof(GED_BRIDGE_IN_GE_ALLOC)) {
-				GED_LOGE("ged: erro i32InBufferSize\n");
+			if (psBridgePackageKM->i32OutBufferSize < sizeof(GED_BRIDGE_OUT_GE_GET)) {
+				GED_LOGE("ged: erro i32OutBufferSize = %d\n",
+					psBridgePackageKM->i32OutBufferSize);
 				goto dispatch_exit;
 			}
 			actualSize =
 				(psBridgePackageKM->i32OutBufferSize
 					- sizeof(GED_BRIDGE_OUT_GE_GET))
 					/ sizeof(uint32_t);
-			expectSize =
-				((GED_BRIDGE_IN_GE_GET *)pvIn)->uint32_size;
+			expectSize = ((GED_BRIDGE_IN_GE_GET *)pvIn)->uint32_size;
 			if (expectSize > actualSize) {
-				GED_LOGE("ged: expectSize > actualSize\n");
+				GED_LOGE("ged: expectSize > actualSize, expectSize = %zu, actualSize = %zu\n",
+					expectSize, actualSize);
 				goto dispatch_exit;
 			}
 			SET_FUNC_AND_CHECK(ged_bridge_ge_get, GE_GET);
 			break;
 		case GED_BRIDGE_COMMAND_GE_SET:
-			if (psBridgePackageKM->i32InBufferSize < sizeof(GED_BRIDGE_IN_GE_ALLOC)) {
-				GED_LOGE("ged: erro i32InBufferSize\n");
+			if (psBridgePackageKM->i32InBufferSize < sizeof(GED_BRIDGE_IN_GE_SET)) {
+				GED_LOGE("ged: erro i32InBufferSize = %d\n",
+					psBridgePackageKM->i32InBufferSize);
 				goto dispatch_exit;
 			}
 			actualSize =
 				(psBridgePackageKM->i32InBufferSize
 					- sizeof(GED_BRIDGE_IN_GE_SET))
 					/ sizeof(uint32_t);
-			expectSize =
-				((GED_BRIDGE_IN_GE_SET *)pvIn)->uint32_size;
+			expectSize = ((GED_BRIDGE_IN_GE_SET *)pvIn)->uint32_size;
 			if (expectSize > actualSize) {
-				GED_LOGE("ged: expectSize > actualSize\n");
+				GED_LOGE("ged: expectSize > actualSize, expectSize = %zu, actualSize = %zu\n",
+					expectSize, actualSize);
 				goto dispatch_exit;
 			}
 			SET_FUNC_AND_CHECK(ged_bridge_ge_set, GE_SET);
@@ -256,6 +255,10 @@ static long ged_dispatch(struct file *pFile, GED_BRIDGE_PACKAGE *psBridgePackage
 				goto dispatch_exit;
 			}
 		}
+	} else {
+		GED_LOGE("ged: erro i32InBufferSize = %d, i32OutBufferSize = %d\n",
+			psBridgePackageKM->i32InBufferSize,
+			psBridgePackageKM->i32OutBufferSize);
 	}
 
 dispatch_exit:

@@ -187,6 +187,9 @@ struct battery_thermal_protection_data {
 
 struct charger_custom_data {
 	int battery_cv;	/* uv */
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	int battery_cv_aging;	/* uv */
+#endif
 	int max_charger_voltage;
 	int max_charger_voltage_setting;
 	int min_charger_voltage;
@@ -217,6 +220,14 @@ struct charger_custom_data {
 	int jeita_temp_t1_to_t2_cv_voltage;
 	int jeita_temp_t0_to_t1_cv_voltage;
 	int jeita_temp_below_t0_cv_voltage;
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	int jeita_temp_above_t4_cv_voltage_aging;
+	int jeita_temp_t3_to_t4_cv_voltage_aging;
+	int jeita_temp_t2_to_t3_cv_voltage_aging;
+	int jeita_temp_t1_to_t2_cv_voltage_aging;
+	int jeita_temp_t0_to_t1_cv_voltage_aging;
+	int jeita_temp_below_t0_cv_voltage_aging;
+#endif
 	int temp_t4_threshold;
 	int temp_t4_thres_minus_x_degree;
 	int temp_t3_threshold;
@@ -457,6 +468,9 @@ struct charger_manager {
 	unsigned int top_off_mode_time_threshold;
 	int custom_charging_cv;
 	int top_off_mode_cv;
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	int top_off_mode_cv_aging;
+#endif
 	unsigned long custom_plugin_time;
 	unsigned int top_off_mode_enable; /* 0=ratail unit, 1=demo unit */
 

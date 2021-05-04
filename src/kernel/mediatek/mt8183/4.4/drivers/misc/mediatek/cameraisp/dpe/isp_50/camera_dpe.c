@@ -4496,7 +4496,7 @@ static void DPE_ScheduleDveWork(struct work_struct *data)
 	if (bResulst == MTRUE)
 		wake_up_interruptible(&DPEInfo.WaitQueueHead);
 
-	if (bFound == MTRUE)
+	if (bFound == MTRUE && DveWriteIdx < _SUPPORT_MAX_DPE_REQUEST_RING_SIZE_)
 		ConfigDVERequest(DveWriteIdx);
 
 }

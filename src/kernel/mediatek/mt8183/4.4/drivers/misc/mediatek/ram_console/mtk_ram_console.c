@@ -336,7 +336,7 @@ void pstore_console_show(enum pstore_type_id type_id, struct seq_file *m, void *
 	while ((size = psi->read(&id, &type, &count, &time, &buf, &compressed, psi)) > 0) {
 		if (type == type_id)
 			seq_write(m, buf, size);
-		kfree(buf);
+		kvfree(buf);
 		buf = NULL;
 	}
 

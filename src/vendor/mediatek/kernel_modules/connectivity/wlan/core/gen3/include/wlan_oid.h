@@ -1728,7 +1728,6 @@ struct WIFI_ON_TIME_STATISTICS {
 	/*record the last update time*/
 	OS_SYSTIME lastUpdateTime;
 };
-
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -2535,5 +2534,9 @@ UINT_32
 wlanoidGetFwActiveTimeStatistics(IN P_ADAPTER_T prAdapter,
 	IN PVOID pvQueryBuffer, IN UINT_32 u4QueryBufferLen, OUT PUINT_32 pu4QueryInfoLen);
 #endif
+
+WLAN_STATUS
+wlanoidQueryBandWidth(IN P_ADAPTER_T prAdapter,
+			  IN PVOID pvQueryBuffer, IN UINT_32 u4QueryBufferLen, OUT PUINT_32 pu4QueryInfoLen);
 
 #endif /* _WLAN_OID_H */

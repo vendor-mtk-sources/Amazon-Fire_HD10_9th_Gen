@@ -626,6 +626,7 @@
 #define CFG_UNITEST_P2P                         0
 
 #define CFG_SHOW_IP     0
+#define CFG_SHOW_FULL_MACADDR     0
 
 /*
  * Enable cfg80211 option after Android 2.2(Froyo) is suggested,
@@ -918,6 +919,22 @@
 #endif
 #define CFG_SUPPORT_BA_OFFLOAD 1
 #define CFG_SUPPORT_RX_AMSDU 0
+
+/* Enable A-MSDU Attack Detection */
+#define CFG_SUPPORT_AMSDU_ATTACK_DETECTION 1
+
+/* Enable Fragment Support */
+#define CFG_SUPPORT_FRAG_SUPPORT 1
+
+/* Enable Fragment Attack Detection */
+#define CFG_SUPPORT_FRAG_ATTACK_DETECTION 1
+
+/* Enable Fake EAPOL Detection */
+#define CFG_SUPPORT_FAKE_EAPOL_DETECTION 1
+
+/* Enable TKIP MIC ERROR Detection */
+#define CFG_SUPPORT_TKIP_MICERROR_DETECTION 1
+
 /*------------------------------------------------------------------------------
  * Flags of WoW statistics SUPPORT
  *------------------------------------------------------------------------------

@@ -80,6 +80,14 @@ config MTK_SMART_BATTERY
 	  It maintais both charger and battery status.
 	  It also includes Mediatek gas gauge.
 
+config MTK_USE_AGING_ZCV
+	bool "MediaTek Switch ZCV table"
+	default n
+	help
+	  Say Y to enable
+	  Allow it to change to another ZCV table when battery aging
+	  Need to cooperate with GM30
+
 config POWER_EXT
 	tristate "MediaTek Power Ext"
 	default n

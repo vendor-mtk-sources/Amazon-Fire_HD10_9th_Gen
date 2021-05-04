@@ -2469,7 +2469,12 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 	case ISP_READ_REGISTER: {
 		if (copy_from_user(&RegIo, (void *)Param, sizeof(struct ISP_REG_IO_STRUCT)) == 0) {
 			/* 2nd layer behavoir of copy from user is implemented in ISP_ReadReg(...) */
-			Ret = ISP_ReadReg(&RegIo);
+			if (RegIo.Count <= ISP_REG_RANGE)
+				Ret = ISP_ReadReg(&RegIo);
+			else {
+				LOG_NOTICE("ISP_READ_REGISTER Count error");
+				Ret = -EFAULT;
+			}
 		} else {
 			LOG_NOTICE("copy_from_user failed\n");
 			Ret = -EFAULT;
@@ -2879,8 +2884,10 @@ static long ISP_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 				ispclks.clklevel[lv] = freq_steps[lv];
 				LOG_VRB("DFS Clk level[%d]:%d", lv, ispclks.clklevel[lv]);
 			}
-
-			target_clk = ispclks.clklevel[ispclks.clklevelcnt - 1];
+			if (ispclks.clklevelcnt == 0)
+				target_clk = ispclks.clklevel[0];
+			else
+				target_clk = ispclks.clklevel[ispclks.clklevelcnt - 1];
 		#else
 			/* To get how many clk levels this platform is supported */
 			memset((void *)&ispclks, 0,

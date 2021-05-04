@@ -629,7 +629,7 @@ struct rt551x_priv {
 	int dsp_had_irq;
 	int hw_reset_pin;
 	int hw_irq_pin;
-#ifdef CONFIG_SND_SOC_RT551X_TEST_ONLY
+#if ((defined CONFIG_SND_SOC_RT551X_TEST_ONLY) || (defined CONFIG_SND_SOC_RT551X_CHECK))
 	int dsp_fw_check;
 	int sw_reset;
 	int sw_reset_spi;

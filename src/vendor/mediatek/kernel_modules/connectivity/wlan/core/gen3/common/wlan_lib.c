@@ -5276,6 +5276,7 @@ VOID wlanDumpAllBssStatistics(IN P_ADAPTER_T prAdapter)
 	for (ucIdx = 0; ucIdx < BSS_INFO_NUM; ucIdx++)
 		wlanDumpBssStatistics(prAdapter, ucIdx);
 }
+
 WLAN_STATUS
 wlanoidQueryStaStatistics(IN P_ADAPTER_T prAdapter,
 			  IN PVOID pvQueryBuffer, IN UINT_32 u4QueryBufferLen, OUT PUINT_32 pu4QueryInfoLen)

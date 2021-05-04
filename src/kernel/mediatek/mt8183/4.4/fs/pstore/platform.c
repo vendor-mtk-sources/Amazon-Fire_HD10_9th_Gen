@@ -37,6 +37,7 @@
 #include <linux/jiffies.h>
 #include <linux/workqueue.h>
 #include <linux/io.h>
+#include <linux/mm.h>
 
 #include "internal.h"
 
@@ -607,7 +608,7 @@ void pstore_get_records(int quiet)
 							big_oops_buf_sz);
 
 			if (unzipped_len > 0) {
-				kfree(buf);
+				kvfree(buf);
 				buf = big_oops_buf;
 				size = unzipped_len;
 				compressed = false;
@@ -621,7 +622,7 @@ void pstore_get_records(int quiet)
 				  compressed, (size_t)size, time, psi);
 		if (unzipped_len < 0) {
 			/* Free buffer other than big oops */
-			kfree(buf);
+			kvfree(buf);
 			buf = NULL;
 		} else
 			unzipped_len = -1;

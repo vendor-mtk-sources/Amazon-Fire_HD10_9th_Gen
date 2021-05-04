@@ -3161,7 +3161,12 @@ static long WPE_ioctl(struct file *pFile, unsigned int Cmd, unsigned long Param)
 		{
 			if (copy_from_user(&RegIo, (void *)Param, sizeof(struct WPE_REG_IO_STRUCT)) == 0) {
 				/* 2nd layer behavoir of copy from user is implemented in WPE_ReadReg(...) */
-				Ret = WPE_ReadReg(&RegIo);
+				if (RegIo.Count <= WPE_REG_RANGE)
+					Ret = WPE_ReadReg(&RegIo);
+				else {
+					LOG_ERR("WPE_READ_REGISTER Count error");
+					Ret = -EFAULT;
+				}
 			} else {
 				LOG_ERR("WPE_READ_REGISTER copy_from_user failed");
 				Ret = -EFAULT;

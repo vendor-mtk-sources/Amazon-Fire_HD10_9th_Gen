@@ -5,7 +5,7 @@
 
 #define MAX_REPORTING_PERIOD                  (3600*24)
 #define THREAD_SLEEP_TIME_MSEC                    10000
-#define INTEGRITY_MODULE_VERSION                     10
+#define INTEGRITY_MODULE_VERSION                     11
 #define BATTERY_METRICS_BUFF_SIZE                   512
 #define ANDROID_LOG_INFO_LOCAL                        4
 #define STRESS_PERIOD                               450
@@ -23,8 +23,8 @@
 #define INTEGRITY_BATTERY_MODULE   "integrity_batt"
 #define STRESS_PULSE_DEBUG_STRING  "integrity_batt:def:PULSEDEBUG=1;CT;1,stressFrame=%d;CT;1,stressPeriod=%d;CT;1,Vol=%d;CT;1,temp=%d;CT;1,stress=%s;DV;1,iVer=%d;CT;1:NA"
 #define STRESS_REPORT_STRING       "integrity_batt:def:BattStress=1;CT;1,stress_period=%d;CT;1,stress=%s;DV;1,iVer=%d;CT;1:NA"
-#define CHARGE_STATE_REPORT_STRING "integrity_batt:def:UNLOAD=1;CT;1,Charger_status=%d;CT;1,Elaps_Sec=%ld;CT;1,iVol=%d;CT;1,fVol=%d;CT;1,lVol=%d;CT;1,iSOC=%d;CT;1,Bat_aTemp=%d;CT;1,Vir_aTemp=%d;CT;1,Bat_pTemp=%d;CT;1,Vir_pTemp=%d;CT;1,bTemp=%d;CT;1,Cycles=%d;CT;1,pVUsb=%d;CT;1,fVUsb=%d;CT;1,mVUsb=%d;CT;1,aVUsb=%d;CT;1,aVol=%d;CT;1,fSOC=%d;CT;1,ct=%d;CT;1,iVer=%d;CT;1:NA"
-#define CHARGE_STATE_DEBUG_STRING  "integrity_batt:def:ThreadLocal=1;CT;1,Charger_status=%d;CT;1,AvgVbatt=%d;CT;1,AvgVUSB=%d;CT;1,mVUsb=%d;CT;1,n_count=%d;CT;1,Elaps_Sec=%ld;CT;1,Bat_vTemp=%d;CT;1,elaps_sec=%ld;CT;1,elaps_sec_start=%ld;CT;1,elaps_sec_prev=%ld;CT;1,delta_elaps_sec=%ld;CT;1,calc_elaps_sec=%ld;CT;1:NA"
+#define CHARGE_STATE_REPORT_STRING "integrity_batt:def:UNLOAD=1;CT;1,Charger_status=%d;CT;1,Elaps_Sec=%ld;CT;1,iVol=%d;CT;1,fVol=%d;CT;1,lVol=%d;CT;1,iSOC=%d;CT;1,Bat_aTemp=%d;CT;1,Vir_aTemp=%d;CT;1,Bat_pTemp=%d;CT;1,Vir_pTemp=%d;CT;1,bTemp=%d;CT;1,Cycles=%d;CT;1,pVUsb=%d;CT;1,fVUsb=%d;CT;1,mVUsb=%d;CT;1,aVUsb=%lu;CT;1,chg_type=%d;CT;1,aVol=%lu;CT;1,fSOC=%d;CT;1,ct=%lu;CT;1,iVer=%d;CT;1:NA"
+#define CHARGE_STATE_DEBUG_STRING  "integrity_batt:def:ThreadLocal=1;CT;1,Charger_status=%d;CT;1,Charger_type=%d;CT;1,AvgVbatt=%d;CT;1,AvgVUSB=%d;CT;1,mVUsb=%d;CT;1,n_count=%lu;CT;1,Elaps_Sec=%ld;CT;1,Bat_vTemp=%d;CT;1,elaps_sec=%ld;CT;1,elaps_sec_start=%ld;CT;1,elaps_sec_prev=%ld;CT;1,delta_elaps_sec=%ld;CT;1,calc_elaps_sec=%ld;CT;1:NA"
 #define SOC_CORNER_95_STRING       "integrity_batt:def:time_soc95=1;CT;1,Elaps_Sec=%ld;CT;1:NA"
 #define SOC_CORNER_15_1_STRING     "integrity_batt:def:time_soc15_soc20=1;CT;1,Init_Vol=%d;CT;1,Init_SOC=%d;CT;1,Elaps_Sec=%ld;CT;1:NA"
 #define SOC_CORNER_15_2_STRING     "integrity_batt:def:time_soc15_soc0=1;CT;1,Init_Vol=%d;CT;1,Init_SOC=%d;CT;1,Elaps_Sec=%ld;CT;1:NA"
@@ -37,6 +37,7 @@ enum battery_metrics_info {
 	TYPE_SOC,
 	TYPE_BAT_CYCLE,
 	TYPE_CHG_STATE,
+	TYPE_CHG_TYPE,
 	TYPE_MAX,
 };
 
@@ -44,6 +45,7 @@ enum battery_metrics_info {
 struct integrity_metrics_data {
 
 	unsigned int chg_sts;
+	unsigned int chg_type;
 
 	unsigned int batt_volt_init;
 	unsigned int batt_volt_final;
@@ -85,6 +87,7 @@ struct integrity_driver_data {
 	struct platform_device *pdev;
 	struct power_supply *usb_psy;
 	struct power_supply *batt_psy;
+	struct power_supply *charger_psy;
 	struct timespec init_time;
 	struct notifier_block notifier;
 	struct delayed_work dwork;

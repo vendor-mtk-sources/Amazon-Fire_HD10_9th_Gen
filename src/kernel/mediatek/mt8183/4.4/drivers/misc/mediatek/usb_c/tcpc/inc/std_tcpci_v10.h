@@ -130,6 +130,7 @@
  * TCPC_V10_REG_POWER_CTRL		(0x1C)
  */
 
+#define TCPC_V10_REG_FORCE_DISC_EN		(1<<2)
 #define TCPC_V10_REG_POWER_CTRL_VCONN		(1<<0)
 
 /*

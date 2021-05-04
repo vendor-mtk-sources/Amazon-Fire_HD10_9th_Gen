@@ -780,16 +780,12 @@ static const UINT_16 g_u2TxPwrRegion2[] = {
 static const UINT_16 g_u2TxPwrRegion3[] = { COUNTRY_CODE_JP };
 
 #if CFG_PWR_LIMIT_COUNTRY
-static const UINT_16 g_u2TxPwrRegion4[] = { COUNTRY_CODE_AU, COUNTRY_CODE_NZ };
 static const UINT_16 g_u2TxPwrRegion5[] = { COUNTRY_CODE_US };
 static const UINT_16 g_u2TxPwrRegion6[] = { COUNTRY_CODE_CA };
 #endif
 
 TX_PWR_REGION_INFO_ENTRY arSupportedTxPwrRegion[] = {
 #if CFG_PWR_LIMIT_COUNTRY
-	{(PUINT_16) g_u2TxPwrRegion4, sizeof(g_u2TxPwrRegion4) / 2,
-	 REGION_CODE_AU}
-	,
 	{(PUINT_16) g_u2TxPwrRegion5, sizeof(g_u2TxPwrRegion5) / 2,
 	 REGION_CODE_FCC}
 	,

@@ -1418,8 +1418,7 @@ GED_ERROR ged_dvfs_probe_signal(int signo)
 	}
 
 	if (t != NULL) {
-		send_sig_info(signo, &info, t);
-		ged_log_buf_print(ghLogBuf_ged_srv, "[GED_K] send signo %d to ged_srv [%d]", signo, g_probe_pid);
+		ged_log_buf_print(ghLogBuf_ged_srv, "[GED_K] skip signo %d to ged_srv [%d]", signo, g_probe_pid);
 		return GED_OK;
 	} else {
 		g_probe_pid = GED_NO_UM_SERVICE;

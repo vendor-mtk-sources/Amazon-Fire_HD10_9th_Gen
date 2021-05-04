@@ -167,6 +167,7 @@ static const struct iw_priv_args rIwPrivTable[] = {
 		"set_dtim_skip"},
 	{PRIV_CMD_DTIM_SKIP_COUNT, 0, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
 		"get_dtim_skip"},
+	{PRIV_CMD_GET_BAND_WITH, 0, IW_PRIV_TYPE_CHAR | 2000, "get_bandwidth"},
 #if ENABLED_IN_ENGUSERDEBUG
 	{PRIV_CMD_TRIGGER_CHIP_RESET, IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1, 0,
 		"set_chip_reset_ut"},

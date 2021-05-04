@@ -21,6 +21,7 @@ hid-wiimote-y		:= hid-wiimote-core.o hid-wiimote-modules.o
 hid-wiimote-$(CONFIG_DEBUG_FS)	+= hid-wiimote-debug.o
 
 obj-$(CONFIG_HID_AMAZON_ASPEN)	+= hid-aspen.o
+obj-$(CONFIG_HID_KAWARTHA)	+= hid-kawartha.o
 obj-$(CONFIG_HID_LAB126)	+= hid-magneto.o
 obj-$(CONFIG_HID_A4TECH)	+= hid-a4tech.o
 obj-$(CONFIG_HID_ACRUX)		+= hid-axff.o

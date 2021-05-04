@@ -67,6 +67,9 @@
 #include <musb_core.h>
 #include "mtk_charger_intf.h"
 #include "mtk_switch_charging.h"
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+#include "mtk_battery_internal.h"
+#endif
 
 static int _uA_to_mA(int uA)
 {
@@ -527,14 +530,24 @@ static void swchg_select_cv(struct charger_manager *info)
 		return;
 	}
 
-	if (info->enable_sw_jeita)
+	if (info->enable_sw_jeita) {
 		if (info->sw_jeita.cv != 0) {
 			charger_dev_set_constant_voltage(info->chg1_dev, info->sw_jeita.cv);
 			return;
 		}
+	}
 
 	/* dynamic cv*/
+#ifndef CONFIG_MTK_USE_AGING_ZCV
 	constant_voltage = info->data.battery_cv;
+#else
+	/* MTK_USE_AGING_ZCV */
+	if (!gm.use_aging_zcv)
+		constant_voltage = info->data.battery_cv;
+	else
+		constant_voltage = info->data.battery_cv_aging;
+#endif
+
 	mtk_get_dynamic_cv(info, &constant_voltage);
 
 	charger_dev_set_constant_voltage(info->chg1_dev, constant_voltage);

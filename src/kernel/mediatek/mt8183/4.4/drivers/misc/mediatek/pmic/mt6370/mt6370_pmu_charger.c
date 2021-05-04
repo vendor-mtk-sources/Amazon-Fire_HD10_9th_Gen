@@ -38,6 +38,7 @@
 #include "inc/mt6370_pmu_charger.h"
 #include "inc/mt6370_pmu.h"
 #include <mt-plat/charger_class.h>
+#include "tcpm.h"
 
 #ifdef CONFIG_FUSB251
 #include <misc/fusb251_notify.h>
@@ -2174,9 +2175,21 @@ static int mt6370_enable_otg(struct charger_device *chg_dev, bool en)
 			mdelay(3);
 			pinctrl_select_state(chg_data->pwr_switch_pinctrl, chg_data->otg_enable);
 		} else {
+			struct tcpc_device *tcpc;
+
 			pinctrl_select_state(chg_data->pwr_switch_pinctrl, chg_data->otg_disable);
+
 			/* To ensure that usb_otg_en level is low. */
+			tcpc = tcpc_dev_get_by_name("type_c_port0");
+
+			if (tcpc != NULL)
+				tcpm_typec_set_discharge(tcpc, true);
+
 			msleep(50);
+
+			if (tcpc != NULL)
+				tcpm_typec_set_discharge(tcpc, false);
+
 			pinctrl_select_state(chg_data->pwr_switch_pinctrl, chg_data->sgm2541_auto);
 		}
 

@@ -268,6 +268,24 @@ int tcpm_typec_role_swap(struct tcpc_device *tcpc_dev)
 #endif /* CONFIG_TYPEC_CAP_ROLE_SWAP */
 }
 
+int tcpm_typec_set_discharge(struct tcpc_device *tcpc_dev, bool en)
+{
+	int ret = 0;
+
+	tcpci_lock_typec(tcpc_dev);
+#ifdef CONFIG_TYPEC_CAP_FORCE_DISCHARGE
+#ifdef CONFIG_TCPC_FORCE_DISCHARGE_IC
+	if (en)
+		ret = tcpci_enable_force_discharge(tcpc_dev, 0);
+	else
+		ret = tcpci_disable_force_discharge(tcpc_dev);
+#endif	/* CONFIG_TCPC_FORCE_DISCHARGE_IC */
+#endif	/* CONFIG_TYPEC_CAP_FORCE_DISCHARGE */
+	tcpci_unlock_typec(tcpc_dev);
+
+	return ret;
+}
+
 int tcpm_typec_change_role(
 	struct tcpc_device *tcpc_dev, uint8_t typec_role)
 {

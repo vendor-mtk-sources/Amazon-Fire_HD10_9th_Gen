@@ -187,7 +187,7 @@ static long env_proc_ioctl(struct file *filp, unsigned int cmd, unsigned long ar
 		ret = -EFAULT;
 		goto end;
 	}
-	name_buf[en_ctl.name_len] = 0;
+	name_buf[en_ctl.name_len] = '\0';
 	if (*name_buf == '\0') {
 		ret = 0;
 		goto end;
@@ -364,7 +364,7 @@ static char *env_get_addr(int index)
 
 static int envmatch(char *s1, int i2)
 {
-	while (*s1 == env_get_char(i2++)) {
+	while ((*s1 == env_get_char(i2++)) && (i2 < CFG_ENV_DATA_SIZE)) {
 		if (*s1++ == '=')
 			return i2;
 	}

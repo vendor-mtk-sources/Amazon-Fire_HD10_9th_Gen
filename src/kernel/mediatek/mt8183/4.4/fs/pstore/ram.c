@@ -219,6 +219,47 @@ void ramoops_append_plat_log(const char *fmt, ...)
 	}
 }
 
+#define FALLBACK_ORDER (PAGE_ALLOC_COSTLY_ORDER + 1) /* tuning number */
+
+/**
+ * kvmalloc - attempt to allocate physically contiguous memory, but upon
+ * failure, fall back to non-contiguous (vmalloc) allocation.
+ * @size: size of the request.
+ *
+ * Uses kmalloc to get the memory but if the allocation fails then falls back
+ * to the vmalloc allocator. Use kvfree for freeing the memory.
+ *
+ * Return: pointer to the allocated memory of %NULL in case of failure
+ */
+static inline void *kvmalloc(size_t size)
+{
+	gfp_t kmalloc_flags = GFP_KERNEL;
+	void *ret;
+	/*
+	 * We want to attempt a large physically contiguous block first because
+	 * it is less likely to fragment multiple larger blocks and therefore
+	 * contribute to a long term fragmentation less than vmalloc fallback.
+	 * However make sure that larger requests are not too disruptive - no
+	 * OOM killer and no allocation failure warnings as we have a fallback.
+	 */
+	if (get_order(size) >= FALLBACK_ORDER) {
+		kmalloc_flags |= __GFP_NOWARN;
+	}
+
+	ret = kmalloc(size, kmalloc_flags);
+
+	/*
+	 * won't fallback to vmalloc if order < FALLBACK_ORDER
+	 */
+	if (ret || get_order(size) < FALLBACK_ORDER)
+		return ret;
+
+	pr_err("Can't allocate memory by kmalloc, fallback to vmalloc.\n");
+
+	return vmalloc(size);
+
+}
+
 static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 				   int *count, struct timespec *time,
 				   char **buf, bool *compressed,
@@ -283,9 +324,14 @@ static ssize_t ramoops_pstore_read(u64 *id, enum pstore_type_id *type,
 	if (*type == PSTORE_TYPE_CONSOLE) {
 		extra_size += plat_log_size;
 	}
-	*buf = kmalloc(size + ecc_notice_size + extra_size + 1, GFP_KERNEL);
-	if (*buf == NULL)
+
+	*buf = kvmalloc(size + ecc_notice_size + extra_size + 1);
+
+	if (*buf == NULL) {
+		pr_err("ramoops_pstore_read memory allocation failure, order = %d\n",
+			get_order(size + ecc_notice_size + extra_size + 1));
 		return -ENOMEM;
+	}
 
 	memcpy(*buf, (char *)persistent_ram_old(prz) + header_length, size);
 	persistent_ram_ecc_string(prz, *buf + size, ecc_notice_size + 1);

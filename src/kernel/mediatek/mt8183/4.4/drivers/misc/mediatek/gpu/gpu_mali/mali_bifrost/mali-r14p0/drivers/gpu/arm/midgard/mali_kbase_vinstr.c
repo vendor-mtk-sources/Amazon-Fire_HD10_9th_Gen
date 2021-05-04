@@ -664,7 +664,7 @@ error:
 	if (cli->dump_buffers)
 		free_pages(
 				(unsigned long)cli->dump_buffers,
-				get_order(cli->dump_size * cli->buffer_count));
+				get_order(cli->dump_size * (size_t)cli->buffer_count));
 	kfree(cli->accum_buffer);
 	if (!clients_present && vinstr_ctx->kctx) {
 		thread = vinstr_ctx->thread;
@@ -752,7 +752,7 @@ void kbase_vinstr_detach_client(struct kbase_vinstr_client *cli)
 	kfree(cli->dump_buffers_meta);
 	free_pages(
 			(unsigned long)cli->dump_buffers,
-			get_order(cli->dump_size * cli->buffer_count));
+			get_order(cli->dump_size * (size_t)cli->buffer_count));
 	kfree(cli->accum_buffer);
 	kfree(cli);
 

@@ -543,6 +543,13 @@ struct _SW_RFB_T {
 	P_STA_RECORD_T prStaRec;
 
 	UINT_8 ucPacketType;
+	uint8_t ucPayloadFormat;
+	uint8_t ucSecMode;
+	uint8_t ucOFLD;
+	uint8_t ucKeyID;
+	uint8_t ucChanFreq;
+	uint8_t ucRxvSeqNo;
+	uint8_t ucChnlNum;
 
 	/* rx sta record */
 	UINT_8 ucWlanIdx;
@@ -551,6 +558,18 @@ struct _SW_RFB_T {
 	BOOLEAN fgReorderBuffer;
 	BOOLEAN fgDataFrame;
 	BOOLEAN fgFragFrame;
+	u_int8_t fgHdrTran;
+	u_int8_t fgIcvErr;
+	u_int8_t fgIsBC;
+	u_int8_t fgIsMC;
+	u_int8_t fgIsCipherMS;
+	u_int8_t fgIsCipherLenMS;
+	u_int8_t fgIsFrag;
+	u_int8_t fgIsFCS;
+	u_int8_t fgIsAmpdu;
+#if CFG_SUPPORT_AMSDU_ATTACK_DETECTION
+	u_int8_t fgIsFirstSubAMSDULLCMS;
+#endif
 	/* duplicate detection */
 	UINT_16 u2FrameCtrl;
 	UINT_16 u2SequenceControl;
@@ -818,6 +837,18 @@ typedef struct _EMU_MAC_RATE_INFO_T {
 #define RXM_IS_DATA_FRAME(_u2FrameCtrl) \
 	(((_u2FrameCtrl & MASK_FC_TYPE) == MAC_FRAME_TYPE_DATA) ? TRUE : FALSE)
 
+#define RXM_IS_TO_DS(_u2FrameCtrl) \
+	(((_u2FrameCtrl & MASK_TO_DS_FROM_DS ) == MASK_FC_TO_DS) ? TRUE : FALSE)
+
+#define RXM_IS_FROM_DS(_u2FrameCtrl) \
+	(((_u2FrameCtrl & MASK_TO_DS_FROM_DS ) == MASK_FC_FROM_DS) ? TRUE : FALSE)
+
+#define RXM_IS_FRAGMENT_FRAME(_u2FrameCtrl) \
+	(((_u2FrameCtrl & MASK_FC_MORE_FRAG)))
+#define RXM_IS_MORE_DATA(_u2FrameCtrl) \
+	(((_u2FrameCtrl & MASK_FC_MORE_DATA) == MASK_FC_MORE_DATA) ? TRUE : FALSE)
+
+
 /*******************************************************************************
 *                   F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
@@ -893,4 +924,7 @@ WLAN_STATUS nicRxFlush(IN P_ADAPTER_T prAdapter);
 WLAN_STATUS nicRxProcessActionFrame(IN P_ADAPTER_T prAdapter, IN P_SW_RFB_T prSwRfb);
 
 VOID nicRxMgmtNoWTBLHandling(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb);
+void nicRxClearFrag(IN P_ADAPTER_T prAdapter,
+	IN P_STA_RECORD_T prStaRec);
+
 #endif /* _NIC_RX_H */

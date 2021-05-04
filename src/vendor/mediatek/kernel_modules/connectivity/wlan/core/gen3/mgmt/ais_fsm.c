@@ -33,6 +33,12 @@
 ********************************************************************************
 */
 #include "precomp.h"
+#ifdef CONFIG_AMZN_METRICS_LOG
+#include <linux/amzn_metricslog.h>
+#endif
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#endif
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -617,19 +623,7 @@ VOID aisFsmStateInit_JOIN(IN P_ADAPTER_T prAdapter, P_BSS_DESC_T prBssDesc)
 	prJoinReqMsg->ucSeqNum = ++prAisFsmInfo->ucSeqNumOfReqMsg;
 	prJoinReqMsg->prStaRec = prStaRec;
 
-	if (1) {
-		int j;
-		P_FRAG_INFO_T prFragInfo;
-
-		for (j = 0; j < MAX_NUM_CONCURRENT_FRAGMENTED_MSDUS; j++) {
-			prFragInfo = &prStaRec->rFragInfo[j];
-
-			if (prFragInfo->pr1stFrag) {
-				/* nicRxReturnRFB(prAdapter, prFragInfo->pr1stFrag); */
-				prFragInfo->pr1stFrag = (P_SW_RFB_T) NULL;
-			}
-		}
-	}
+	nicRxClearFrag(prAdapter, prStaRec);
 #if CFG_SUPPORT_802_11K
 	rlmSetMaxTxPwrLimit(prAdapter, (prBssDesc->cPowerLimit != RLM_INVALID_POWER_LIMIT) ?
 	prBssDesc->cPowerLimit:RLM_MAX_TX_PWR, 1);
@@ -2721,6 +2715,51 @@ VOID aisFsmRunEventJoinComplete(IN struct _ADAPTER_T *prAdapter, IN struct _MSG_
 	cnmMemFree(prAdapter, prMsgHdr);
 
 }				/* end of aisFsmRunEventJoinComplete() */
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
+void aisNotifyAutoReconnectMetic(IN P_BSS_INFO_T prAisBssInfo,
+	IN P_STA_RECORD_T prStaRec, UINT_8 bConnect)
+
+{
+	UINT_8 key_str[2] = {'S','\0'};
+	UINT_8 metadata_str[128];
+	UINT_16 metadata;
+	UINT_8 metadata1;
+	UINT_16 metadata2;
+	int ret = -1;
+
+	DEBUGFUNC("aisNotifyAutoReconnectMetic()");
+	if (prAisBssInfo == NULL || prStaRec == NULL) {
+		DBGLOG(AIS, ERROR,
+			"aisNotifyAutoReconnectMetic() exception\n");
+		return;
+	}
+
+	metadata = prAisBssInfo->u2DeauthReason;
+	metadata1 = prAisBssInfo->ucPrimaryChannel;
+	metadata2 = prStaRec->u2ReasonCode;
+	kalMemSet(metadata_str, 0x00, 128);
+	if (bConnect == TRUE) {
+		key_str [0]= 'S';
+		sprintf(metadata_str,
+			"!{\"d\"#{\"metadata\"#\"%d\"$\"metadata1\"#\"%d\"}}", metadata, metadata1);
+	}
+	else {
+		key_str [0]= 'F';
+		sprintf(metadata_str,
+			"!{\"d\"#{\"metadata\"#\"%d\"$\"metadata1\"#\"%d\"$\"metadata2\"#\"%d\"}}",
+			metadata, metadata1, metadata2);
+	}
+
+	ret = log_counter_to_vitals(ANDROID_LOG_INFO,
+		"Kernel vitals", "wifiKDM", "conn-num-autoreconnects",
+		key_str, 1, "count", metadata_str, VITALS_NORMAL);
+	if (ret)
+		DBGLOG(AIS, ERROR,
+			"log_counter_to_vitals fail: auto reconnect reason = %d %d\n",
+			metadata,ret);
+}
+#endif
+
 
 enum _ENUM_AIS_STATE_T aisFsmJoinCompleteAction(IN struct _ADAPTER_T *prAdapter, IN struct _MSG_HDR_T *prMsgHdr)
 {
@@ -2754,7 +2793,10 @@ enum _ENUM_AIS_STATE_T aisFsmJoinCompleteAction(IN struct _ADAPTER_T *prAdapter,
 
 #if CFG_SUPPORT_RN
 			GET_CURRENT_SYSTIME(&prAisBssInfo->rConnTime);
-			prAisBssInfo->fgDisConnReassoc = FALSE;
+			if (prAisBssInfo->fgDisConnReassoc == TRUE) {
+				prAisBssInfo->fgDisConnReassoc = FALSE;
+				aisNotifyAutoReconnectMetic(prAisBssInfo, prStaRec, TRUE);
+			}
 #endif
 #if CFG_SUPPORT_DETECT_SECURITY_MODE_CHANGE
 			prAdapter->rWifiVar.rConnSettings.fgSecModeChangeStartTimer = FALSE;
@@ -2911,6 +2953,7 @@ enum _ENUM_AIS_STATE_T aisFsmJoinCompleteAction(IN struct _ADAPTER_T *prAdapter,
 #if CFG_SUPPORT_RN
 				} else if (prAisBssInfo->fgDisConnReassoc == TRUE) {
 					eNextState = AIS_STATE_JOIN_FAILURE;
+					aisNotifyAutoReconnectMetic(prAisBssInfo, prStaRec, FALSE);
 #endif
 				} else if (prAisFsmInfo->rJoinReqTime != 0 &&
 					CHECK_FOR_TIMEOUT(rCurrentTime, prAisFsmInfo->rJoinReqTime,
@@ -5895,7 +5938,7 @@ VOID aisCollectNeighborAP(P_ADAPTER_T prAdapter, PUINT_8 pucApBuf,
 	if (!prIe || !u2ApBufLen || u2ApBufLen < prIe->ucLength)
 		return;
 	LINK_MERGE_TO_TAIL(&prAPlist->rFreeLink, &prAPlist->rUsingLink);
-	for (u2BufLen = u2ApBufLen; u2BufLen > 0; u2BufLen -= IE_SIZE(prIe),
+	for (u2BufLen = u2ApBufLen; u2BufLen >= IE_SIZE(prIe); u2BufLen -= IE_SIZE(prIe),
 		prIe = (struct IE_NEIGHBOR_REPORT_T *)((PUINT_8)prIe + IE_SIZE(prIe))) {
 		/* BIT0-1: AP reachable, BIT2: same security with current setting,
 		** BIT3: same authenticator with current AP

@@ -1044,6 +1044,25 @@ VOID qmHandleRxDhcpPackets(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb);
 BOOLEAN qmHandleRxReplay(P_ADAPTER_T prAdapter, P_SW_RFB_T prSwRfb);
 #endif
 
+#if defined(CFG_SUPPORT_REPLAY_DETECTION) || defined(CFG_SUPPORT_FRAG_ATTACK_DETECTION)
+#define CCMPTSCPNNUM	6
+u_int8_t qmRxPNtoU64(uint8_t *pucPN, uint8_t uPNNum,
+	uint64_t *pu64Rets);
+#endif
+
+#if CFG_SUPPORT_FAKE_EAPOL_DETECTION
+u_int8_t qmDetectRxInvalidEAPOL(IN P_ADAPTER_T prAdapter,
+	IN P_SW_RFB_T prSwRfb);
+
+#endif /* CFG_SUPPORT_FAKE_EAPOL_DETECTION */
+
+#if CFG_SUPPORT_AMSDU_ATTACK_DETECTION
+u_int8_t qmAmsduAttackDetection(IN P_ADAPTER_T prAdapter,
+	IN P_SW_RFB_T prSwRfb);
+#endif /* CFG_SUPPORT_AMSDU_ATTACK_DETECTION */
+
+
+
 VOID qmMoveStaTxQueue(P_STA_RECORD_T prSrcStaRec, P_STA_RECORD_T prDstStaRec);
 VOID qmHandleDelTspec(P_ADAPTER_T prAdapter, P_STA_RECORD_T prStaRec, ENUM_ACI_T eAci);
 

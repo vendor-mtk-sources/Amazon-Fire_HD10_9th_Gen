@@ -830,6 +830,19 @@ static inline int mt6370_fault_status_vconn_ov(struct tcpc_device *tcpc)
 	return mt6370_i2c_write8(tcpc, MT6370_REG_BMC_CTRL, ret);
 }
 
+#ifdef CONFIG_TYPEC_CAP_FORCE_DISCHARGE
+#ifdef CONFIG_TCPC_FORCE_DISCHARGE_IC
+static int mt6370_force_discharge_control(struct tcpc_device *tcpc,
+						bool en, int mv)
+{
+	u8 dischg_bit = TCPC_V10_REG_FORCE_DISC_EN;
+
+	return (en ? mt6370_i2c_set_bit : mt6370_i2c_clr_bit)
+		(tcpc, TCPC_V10_REG_POWER_CTRL, dischg_bit);
+}
+#endif	/* CONFIG_TCPC_FORCE_DISCHARGE_IC */
+#endif	/* CONFIG_TYPEC_CAP_FORCE_DISCHARGE */
+
 static inline int mt6370_fault_status_vconn_oc(struct tcpc_device *tcpc)
 {
 	const uint8_t mask =
@@ -1337,6 +1350,12 @@ static struct tcpc_ops mt6370_tcpc_ops = {
 	.set_low_rp_duty = mt6370_set_low_rp_duty,
 	.set_vconn = mt6370_set_vconn,
 	.deinit = mt6370_tcpc_deinit,
+
+#ifdef CONFIG_TYPEC_CAP_FORCE_DISCHARGE
+#ifdef CONFIG_TCPC_FORCE_DISCHARGE_IC
+	.set_force_discharge = mt6370_force_discharge_control,
+#endif	/* CONFIG_TCPC_FORCE_DISCHARGE_IC */
+#endif	/* CONFIG_TYPEC_CAP_FORCE_DISCHARGE */
 
 #ifdef CONFIG_TCPC_LOW_POWER_MODE
 	.is_low_power_mode = mt6370_is_low_power_mode,

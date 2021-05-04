@@ -222,6 +222,9 @@ enum Fg_kernel_cmds {
 	FG_KERNEL_CMD_CHANG_LOGLEVEL,
 	FG_KERNEL_CMD_REQ_ALGO_DATA,
 	FG_KERNEL_CMD_SET_FULL_CV,
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	FG_KERNEL_CMD_USE_AGING_ZCV,
+#endif
 
 	FG_KERNEL_CMD_FROM_USER_NUMBER
 
@@ -274,6 +277,9 @@ enum Fg_data_type {
 	FUEL_GAUGE_TABLE_CUSTOM_DATA,
 	FGD_CMD_PARAM_T_CUSTOM,
 	FG_LOG_DATA,
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	FG_USE_2ND_ZCV,
+#endif
 
 	FG_DATA_TYPE_NUMBER
 };
@@ -612,6 +618,9 @@ struct fuel_gauge_table_custom_data {
 	/* cust_battery_meter_table.h */
 	int active_table_number;
 	struct fuel_gauge_table fg_profile[MAX_TABLE];
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	struct fuel_gauge_table fg_profile_temp[MAX_TABLE];
+#endif
 
 	int temperature_tb0;
 	int fg_profile_temperature_0_size;
@@ -735,6 +744,10 @@ struct mtk_battery {
 	uint32_t num_of_cell;
 
 	int fake_rtc_soc;
+
+#ifdef CONFIG_MTK_USE_AGING_ZCV
+	int use_aging_zcv;
+#endif
 
 /*simulator log*/
 	struct simulator_log log;

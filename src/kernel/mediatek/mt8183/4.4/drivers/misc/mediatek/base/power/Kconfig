@@ -66,3 +66,5 @@ config AMZN_CPU_FREQ_TRACE
 	---help---
 	  This kernel config can be used to enable Amazon CPU volt/freq runtime trace.
 	  If unsure, say N.
+
+source "drivers/misc/mediatek/base/power/clkbuf_v1/mt8183/Kconfig"

@@ -849,6 +849,8 @@ extern int tcpm_typec_set_custom_hv(
 extern int tcpm_typec_role_swap(
 	struct tcpc_device *tcpc_dev);
 
+extern int tcpm_typec_set_discharge(struct tcpc_device *tcpc_dev, bool en);
+
 extern int tcpm_typec_change_role(
 	struct tcpc_device *tcpc_dev, uint8_t typec_role);
 

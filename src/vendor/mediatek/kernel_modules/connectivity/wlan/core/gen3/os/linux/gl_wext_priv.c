@@ -2481,6 +2481,24 @@ priv_get_string(IN struct net_device *prNetDev,
 
 		break;
 	}
+	case PRIV_CMD_GET_BAND_WITH:
+	{
+		UINT_8 rQueryBandWith;
+
+		rStatus = kalIoctl(prGlueInfo, wlanoidQueryBandWidth,
+				   &rQueryBandWith, sizeof(rQueryBandWith),
+				   TRUE, FALSE, TRUE,
+				   &u4BufLen);
+
+		if (rStatus == WLAN_STATUS_SUCCESS) {
+			pos += scnprintf(buf + pos, u4TotalLen - pos,
+						    "bandwidth = %d\n",rQueryBandWith);
+		}
+		else
+			pos += scnprintf(buf + pos, u4TotalLen - pos,
+						    "get bandwidth fail\n");
+		break;
+	}
 	case PRIV_CMD_CONNSTATUS:
 	{
 		PARAM_MAC_ADDRESS arBssid;

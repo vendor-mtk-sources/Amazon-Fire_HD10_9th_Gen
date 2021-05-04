@@ -48,6 +48,8 @@ static u64 g_freq_steps[MAX_FREQ_STEP];
 static u32 step_size;
 #endif
 
+#define MAX_MET_INFO (2048)
+
 #define DP_TIMER_GET_DURATION_IN_US(start, end, duration)			\
 do {										\
 	uint64_t time1;								\
@@ -655,6 +657,12 @@ static void cmdq_mdp_begin_task_virtual(struct TaskStruct *cmdq_task, struct Tas
 	do {
 		if (mdp_curr_pmqos->ispMetStringSize <= 0)
 			break;
+
+		if (mdp_curr_pmqos->ispMetStringSize > MAX_MET_INFO) {
+			CMDQ_ERR("WARNING: ispMetStringSize>2048, only show 2048 strings\n");
+			mdp_curr_pmqos->ispMetStringSize = MAX_MET_INFO;
+		}
+
 		addr1 = kcalloc(mdp_curr_pmqos->ispMetStringSize,
 			sizeof(char), GFP_KERNEL);
 
@@ -678,6 +686,12 @@ static void cmdq_mdp_begin_task_virtual(struct TaskStruct *cmdq_task, struct Tas
 	do {
 		if (mdp_curr_pmqos->mdpMetStringSize <= 0)
 			break;
+
+		if (mdp_curr_pmqos->mdpMetStringSize > MAX_MET_INFO) {
+			CMDQ_ERR("WARNING: mdpMetStringSize>2048, only show 2048 strings\n");
+			mdp_curr_pmqos->mdpMetStringSize = MAX_MET_INFO;
+		}
+
 		addr2 = kcalloc(mdp_curr_pmqos->mdpMetStringSize,
 			sizeof(char), GFP_KERNEL);
 		if (!addr2) {

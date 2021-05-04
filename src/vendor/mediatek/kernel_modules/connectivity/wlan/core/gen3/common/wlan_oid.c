@@ -2246,6 +2246,19 @@ wlanoidSetAddKey(IN P_ADAPTER_T prAdapter, IN PVOID pvSetBuffer, IN UINT_32 u4Se
 			return WLAN_STATUS_SUCCESS;
 		}
 	}
+	if ((prNewKey->u4KeyIndex & IS_UNICAST_KEY) == IS_UNICAST_KEY) {
+		prStaRec = cnmGetStaRecByAddress(prAdapter,
+				prBssInfo->ucBssIndex, prNewKey->arBSSID);
+		if (!prStaRec) {	/* Already disconnected ? */
+			DBGLOG(REQ, INFO,
+			     "[wlan] Not set the peer key while disconnect\n");
+			return WLAN_STATUS_SUCCESS;
+		}
+#if CFG_SUPPORT_FRAG_ATTACK_DETECTION
+		/* clear fragment cache when rekey */
+		nicRxClearFrag(prAdapter, prStaRec);
+#endif
+	}
 
 	prWlanTable = prAdapter->rWifiVar.arWtbl;
 
@@ -9784,8 +9797,6 @@ wlanoidSetCountryCode(IN P_ADAPTER_T prAdapter,
 			(u2Country != COUNTRY_CODE_ES) &&
 #if CFG_SUPPORT_DFS_CHANNEL /* fos_change oneline */
 			(u2Country != COUNTRY_CODE_EU) &&
-			(u2Country != COUNTRY_CODE_AU) &&
-			(u2Country != COUNTRY_CODE_NZ) &&
 #endif /* fos_change oneline */
 			(u2Country != COUNTRY_CODE_CA))
 		u2Country = COUNTRY_CODE_WW;
@@ -13365,3 +13376,44 @@ wlanoidGetFwActiveTimeStatistics(IN P_ADAPTER_T prAdapter,
 
 }
 #endif
+
+WLAN_STATUS
+wlanoidQueryBandWidth(IN P_ADAPTER_T prAdapter,
+			  IN PVOID pvQueryBuffer, IN UINT_32 u4QueryBufferLen, OUT PUINT_32 pu4QueryInfoLen)
+{
+	WLAN_STATUS rResult = WLAN_STATUS_SUCCESS;
+	UINT_8 bandWidth;
+
+	do {
+		ASSERT(pvQueryBuffer);
+
+		/* Sanity test */
+		if (!prAdapter || !pu4QueryInfoLen)
+			break;
+
+		if ((u4QueryBufferLen) && !pvQueryBuffer)
+			break;
+
+		/* Check for query buffer length */
+		if (u4QueryBufferLen < *pu4QueryInfoLen) {
+			DBGLOG(OID, WARN, "Too short length %u\n", u4QueryBufferLen);
+			return WLAN_STATUS_BUFFER_TOO_SHORT;
+		}
+
+		if (prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelWidth == VHT_OP_CHANNEL_WIDTH_20_40) {
+			if (prAdapter->rBssInfoForSavingFwBSSParam.eBssSCO == CHNL_EXT_SCA ||
+				prAdapter->rBssInfoForSavingFwBSSParam.eBssSCO == CHNL_EXT_SCB)
+				bandWidth = 40;
+			else
+				bandWidth = 20;
+		}
+		else if (prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelWidth == VHT_OP_CHANNEL_WIDTH_80)
+			bandWidth = 80;
+		else if (prAdapter->rBssInfoForSavingFwBSSParam.ucVhtChannelWidth == VHT_OP_CHANNEL_WIDTH_160)
+			bandWidth = 160;
+		else
+			rResult = WLAN_STATUS_FAILURE;
+		*(PUINT_8)pvQueryBuffer = bandWidth;
+	} while (FALSE);
+	return rResult;
+}

@@ -59,6 +59,10 @@
 #include <linux/of_reserved_mem.h>
 #include <mtk_clkbuf_ctl.h>
 
+#include <linux/gpio.h>
+#include <linux/of_gpio.h>
+
+
 /*******************************************************************************
 *                              C O N S T A N T S
 ********************************************************************************
@@ -390,7 +394,30 @@ static INT32 consys_pmic_get_from_dts(struct platform_device *pdev)
 
 static INT32 consys_co_clock_type(VOID)
 {
-	return 0;
+	struct device_node *node = NULL;
+	INT32 gpio_tcxo_en = 0;
+	INT32 value = 0;
+
+	node = of_find_compatible_node(NULL, NULL, "mediatek,mt8183-consys");
+	if(!node) {
+		WMT_PLAT_PR_ERR("Can not find device tree node\n");
+		return -1;
+	}
+
+	gpio_tcxo_en = of_get_named_gpio(node, "tcxo_en", 0);
+	if(!gpio_is_valid(gpio_tcxo_en)) {
+		WMT_PLAT_PR_ERR("Can not get tcxo_en gpio number!\n");
+		return -1;
+	} else
+		gpio_request(gpio_tcxo_en, "consys tcxo_en");
+
+	gpio_direction_input(gpio_tcxo_en);
+
+	value = gpio_get_value(gpio_tcxo_en);
+
+	gpio_free(gpio_tcxo_en);
+
+	return value;
 }
 
 static INT32 consys_clock_buffer_ctrl(MTK_WCN_BOOL enable)

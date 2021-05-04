@@ -612,6 +612,12 @@ VOID aisFsmAntSwQrySwTimeOut(IN P_ADAPTER_T prAdapter, IN P_CMD_INFO_T prCmdInfo
 VOID aisFsmAntSwOidCallbcak(IN P_ADAPTER_T prAdapter);
 VOID aisFsmAntSwDelayTimeOut(IN P_ADAPTER_T prAdapter, ULONG ulParamPtr);
 #endif
+
+#if defined(CONFIG_AMAZON_METRICS_LOG) || defined(CONFIG_AMZN_METRICS_LOG)
+void aisNotifyAutoReconnectMetic(IN P_BSS_INFO_T prAisBssInfo,
+	IN P_STA_RECORD_T prStaRec, UINT_8 bConnect);
+#endif
+
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

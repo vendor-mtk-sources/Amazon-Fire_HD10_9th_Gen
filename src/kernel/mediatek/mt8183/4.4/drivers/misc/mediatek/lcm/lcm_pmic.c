@@ -14,6 +14,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/string.h>
 #include <linux/kernel.h>
+#include <linux/delay.h>
 
 #if defined(CONFIG_RT5081_PMU_DSV) || defined(CONFIG_MT6370_PMU_DSV)
 static struct regulator *disp_bias_pos;
@@ -49,7 +50,7 @@ int display_bias_regulator_init(void)
 EXPORT_SYMBOL(display_bias_regulator_init);
 
 
-int display_bias_enable_vol(int pos_uv, int neg_uv)
+int display_bias_enable_vol(int pos_uv, int neg_uv, unsigned int db_delay)
 {
 	int ret = 0;
 	int retval = 0;
@@ -74,6 +75,15 @@ int display_bias_enable_vol(int pos_uv, int neg_uv)
 	if (ret < 0)
 		pr_err("enable regulator disp_bias_pos fail, ret = %d\n", ret);
 	retval |= ret;
+
+	if (db_delay > 0) {
+		if (db_delay < 10)
+			udelay(db_delay * 1000);
+		else if (db_delay <= 20)
+			usleep_range(db_delay*1000, (db_delay+1)*1000);
+		else
+			msleep(db_delay);
+	}
 
 	ret = regulator_enable(disp_bias_neg);
 	if (ret < 0)
