@@ -338,7 +338,7 @@ static kal_uint16 set_gain(kal_uint16 gain)
 
 	reg_gain = gain2reg(gain);
 
-	for (gain_index = GC02M1FRONT_SENSOR_GAIN_MAX_VALID_INDEX - 1; gain_index >= 0; gain_index--)
+	for (gain_index = GC02M1FRONT_SENSOR_GAIN_MAX_VALID_INDEX - 1; gain_index > 0; gain_index--)
 		if (reg_gain >= GC02M1FRONT_AGC_Param[gain_index][0])
 			break;
 

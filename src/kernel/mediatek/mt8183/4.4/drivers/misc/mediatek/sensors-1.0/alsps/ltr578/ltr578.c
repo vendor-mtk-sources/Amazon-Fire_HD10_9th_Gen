@@ -737,7 +737,7 @@ static int ltr578_get_ps_value(struct ltr578_priv *obj, u16 ps)
 /********************************************************************/
 static int ltr578_get_als_value(struct ltr578_priv *obj, u16 als)
 {
-	int idx;
+	unsigned int idx;
 	int invalid = 0;
 
 	APS_DBG("als  = %d\n", als);
@@ -748,7 +748,9 @@ static int ltr578_get_als_value(struct ltr578_priv *obj, u16 als)
 
 	if (idx >= obj->als_value_num) {
 		APS_ERR("exceed range\n");
-		idx = obj->als_value_num - 1;
+
+		if (obj->als_value_num > 0)
+			idx = obj->als_value_num - 1;
 	}
 
 	if (atomic_read(&obj->als_deb_on) == 1) {

@@ -20,6 +20,6 @@ KERNEL_IMAGES="arch/arm64/boot/Image:arch/arm64/boot/Image.gz:arch/arm64/boot/Im
 
 ################################################################################
 # NOTE: You must fill in the following with the path to a copy of Clang compiler
-#       of version r383902b
+#       of version 4691093.
 ################################################################################
 CLANG_COMPILER_PATH=""
