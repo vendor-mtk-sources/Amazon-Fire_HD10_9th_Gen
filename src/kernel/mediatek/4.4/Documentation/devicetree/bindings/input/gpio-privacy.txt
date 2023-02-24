@@ -1,0 +1,101 @@
+Device-Tree bindings for input/gpio_privacy.c driver
+
+GPIO Privacy driver is driver to emit button events and privacy state events
+based on the values of GPIO.
+
+Required properties:
+	- compatible = "gpio-privacy";
+	- status="okay";
+
+	- enable-gpio: gpio.  gpio to enable privacy state.  This is the signal that
+	  allows software to enable the mute state (but not disable).  This is GPIO
+	  output from SoC to mute chip.
+
+Optional properties:
+	- enable-gpio-toggle-duration: Toggle duration time in milliseconds.
+	  If not specified the toggle duration is 100ms or when privacy state is set.
+	- auto-toggle-enable-gpio-time: The time (in milliseconds) to automatically
+	  assert the enable-gpio line after privacy state warning.  This is used
+	  primarily to make sure privacy state is asserted after state warning has
+	  occurred.  If not specified the value is -1 and the driver will not
+	  automatically toggle enable-gpio line.
+	- privacy-event-max-press-duration: The duration time (in milliseconds)
+	  needed to press privacy button such that it is no longer associated as a
+	  privacy event.  This is important for devices where privacy button and
+	  power buttons are the same button and long pressing privacy/power button
+	  results in a factory reset or low power shutdown event (and not a privacy
+	  event).  If not specified the long press duration is 0, meaning that long
+	  press duration and power event is not applicable.
+
+Optional state_warning_event subnode-properties:
+	- label: Descriptive name of the input state warning event.
+	- linux,code: Input code to emit to warn userspace that we are about to
+	  enter privacy mode.
+	- linux,input-value: If linux,input-type is EV_MSC and linux,code is
+	  MSC_RAW, then this value is sent for events to warn userspace that we
+	  are about to enter privacy mode.
+
+Optional state_warning_event subnode-properties:
+	- linux,input-type: Input event type for state warning event.  If not specified,
+	  default to EV_KEY.
+
+Required state_event subnode-properties:
+	- label: Descriptive name of the input state event.
+	- linux,code: Input code to emit when gpio
+	- gpios: gpio.  Driver uses this gpio to determine privacy state.  This is
+	  GPIO input into SoC.
+
+Optional state_event subnode-properties:
+	- linux,input-type: Input event type for state event.  If not specified,
+	  default to EV_KEY.
+
+Required button_event subnode-properties:
+	- label: Descriptive name of the input button event.
+	- linux,code: Input code to emit.
+	- gpios: gpio.  Driver uses this gpio to determine button state.  This is
+	  GPIO input into SoC.
+
+Optional button_event subnode-properties:
+	- linux,input-type: Input event type for button event.  If not specified,
+	  default to EV_KEY.
+	- debounce-interval: Debouncing interval time in milliseconds.
+	  If not specified defaults to 5.
+	- wakeup-source: The privacy button is enabled as wakeup source.
+
+Example nodes:
+
+		gpio-privacy {
+			compatible = "gpio-privacy";
+			status="okay";
+
+			enable-gpio = <&pio 11 GPIO_ACTIVE_HIGH>;
+			enable-gpio-toggle-duration = <50>;
+
+			privacy-event-max-press-duration = <3000>;
+
+			state_warning_event {
+				label = "mute state warning";
+				linux,input-type = <EV_KEY>;
+				linux,code = <....>; /* custom key event */
+			};
+
+			state_event {
+				label = "mute state";
+				linux,input-type = <EV_SW>;
+				linux,code = <SW_MUTE_DEVICE>;
+
+				gpios = <&pio 63 GPIO_ACTIVE_LOW>;
+			};
+
+			button_event {
+				label = "power button";
+				linux,input-type = <EV_KEY>;
+				linux,code = <KEY_POWER>;
+				debounce-interval = <50>;
+				wakeup-source;
+
+				gpios = <&pio 168 GPIO_ACTIVE_LOW>;
+			};
+		};
+
+		...

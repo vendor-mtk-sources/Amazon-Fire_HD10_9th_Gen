@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Amazon.com, Inc.
+ * Copyright (C) 2019 - 2022 Amazon.com, Inc.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -42,6 +42,33 @@
 bool batt_metrics_first_run = 1;
 static unsigned long elaps_sec_start;
 static unsigned long elaps_sec_prev;
+
+/*
+ * @Function        minerva_log_print
+ * @Description     prints metrics to log in the format expected by Minerva
+ * @Input           group_id
+ * @Input           schema_id
+ * @Input           fmt
+ * @Return          int
+ */
+int minerva_log_print(const char *group_id, const char *schema_id,
+		      const char *fmt, ...)
+{
+	va_list ap;
+	char datapoints[BATTERY_METRICS_BUFF_SIZE] = {0};
+	char msg[BATTERY_METRICS_BUFF_SIZE] = {0};
+
+	va_start(ap, fmt);
+	vsnprintf(datapoints, BATTERY_METRICS_BUFF_SIZE, fmt, ap);
+	va_end(ap);
+
+	snprintf(msg, BATTERY_METRICS_BUFF_SIZE, "%s:%s:%s:%s%s:%s", group_id,
+		 schema_id, INTEGRITY_METRICS_SAMPLING,
+		 INTEGRITY_METRICS_PREDEFINED_FIELDS, datapoints,
+		 INTEGRITY_METRICS_REGION);
+	return log_to_metrics(ANDROID_LOG_INFO_LOCAL, INTEGRITY_BATTERY_MODULE,
+			      msg);
+}
 
 /*
  * @Function       init_stress_metric
@@ -142,7 +169,6 @@ void soc_corner_check(struct integrity_metrics_data *batt_data, int soc,
 {
 	unsigned long calc_above_95_time = 0;
 	unsigned long calc_below_15_time = 0;
-	char g_metrics_buf[BATTERY_METRICS_BUFF_SIZE] = {0};
 
 	if (soc > 95 && !batt_data->batt_95_flag) {
 		batt_data->batt_95_flag = 1;
@@ -153,12 +179,10 @@ void soc_corner_check(struct integrity_metrics_data *batt_data, int soc,
 		batt_data->batt_95_flag = 0;
 		calc_above_95_time = elaps_sec - batt_data->above_95_time;
 		if (calc_above_95_time > 0) {
-			memset(g_metrics_buf, 0, BATTERY_METRICS_BUFF_SIZE);
-			snprintf(g_metrics_buf, sizeof(g_metrics_buf),
-				 SOC_CORNER_95_STRING, calc_above_95_time);
-			log_to_metrics(ANDROID_LOG_INFO_LOCAL,
-				       INTEGRITY_BATTERY_MODULE,
-				       g_metrics_buf);
+			minerva_log_print(INTEGRITY_BATTERY_GROUP,
+					  SOC_CORNER_95_SCHEMA,
+					  SOC_CORNER_95_STRING,
+					  calc_above_95_time);
 		}
 	}
 
@@ -174,14 +198,12 @@ void soc_corner_check(struct integrity_metrics_data *batt_data, int soc,
 		calc_below_15_time = elaps_sec - batt_data->below_15_time;
 
 		if (calc_below_15_time > 0) {
-			memset(g_metrics_buf, 0, BATTERY_METRICS_BUFF_SIZE);
-			snprintf(g_metrics_buf, sizeof(g_metrics_buf),
-				 SOC_CORNER_15_1_STRING,
-				 batt_data->low_batt_init_volt,
-				 batt_data->low_batt_init_soc,
-				 calc_below_15_time);
-			log_to_metrics(ANDROID_LOG_INFO_LOCAL,
-				       INTEGRITY_BATTERY_MODULE, g_metrics_buf);
+			minerva_log_print(INTEGRITY_BATTERY_GROUP,
+					  SOC_CORNER_15_1_SCHEMA,
+					  SOC_CORNER_15_1_STRING,
+					  batt_data->low_batt_init_volt,
+					  batt_data->low_batt_init_soc,
+					  calc_below_15_time);
 		}
 	}
 
@@ -189,15 +211,12 @@ void soc_corner_check(struct integrity_metrics_data *batt_data, int soc,
 		batt_data->battery_below_15_fired = 1;
 		calc_below_15_time = elaps_sec - batt_data->below_15_time;
 		if (calc_below_15_time > 0) {
-			memset(g_metrics_buf, 0, BATTERY_METRICS_BUFF_SIZE);
-			snprintf(g_metrics_buf, sizeof(g_metrics_buf),
-				 SOC_CORNER_15_2_STRING,
-				 batt_data->low_batt_init_volt,
-				 batt_data->low_batt_init_soc,
-				 calc_below_15_time);
-			log_to_metrics(ANDROID_LOG_INFO_LOCAL,
-				       INTEGRITY_BATTERY_MODULE,
-				       g_metrics_buf);
+			minerva_log_print(INTEGRITY_BATTERY_GROUP,
+					  SOC_CORNER_15_2_SCHEMA,
+					  SOC_CORNER_15_2_STRING,
+					  batt_data->low_batt_init_volt,
+					  batt_data->low_batt_init_soc,
+					  calc_below_15_time);
 		}
 	}
 }
@@ -219,7 +238,6 @@ void stress_pulse(struct integrity_metrics_data *batt_data,
 {
 	unsigned int stress_period;
 	unsigned int stress_frame;
-	char g_metrics_buf[BATTERY_METRICS_BUFF_SIZE] = {0};
 
 	stress_period = elaps_sec / STRESS_REPORT_PERIOD;
 	stress_frame = (elaps_sec -
@@ -239,13 +257,13 @@ void stress_pulse(struct integrity_metrics_data *batt_data,
 		batt_data->batt_stress_volts_mv = batt_volt_mv;
 
 #ifdef INTEGRITY_MODULE_DEBUG
-		memset(g_metrics_buf, 0, BATTERY_METRICS_BUFF_SIZE);
-		snprintf(g_metrics_buf, sizeof(g_metrics_buf),
-			 STRESS_PULSE_DEBUG_STRING,
-		stress_frame, stress_period, batt_volt_mv,
-		batt_temp, batt_data->stress_string, INTEGRITY_MODULE_VERSION);
-		log_to_metrics(ANDROID_LOG_INFO_LOCAL,
-			       INTEGRITY_BATTERY_MODULE, g_metrics_buf);
+		minerva_log_print(INTEGRITY_BATTERY_GROUP,
+				  STRESS_PULSE_DEBUG_SCHEMA,
+				  STRESS_PULSE_DEBUG_STRING,
+				  stress_frame, stress_period,
+				  batt_volt_mv,
+				  batt_temp, batt_data->stress_string,
+				  INTEGRITY_MODULE_VERSION);
 #endif
 
 	} else {
@@ -262,12 +280,12 @@ void stress_pulse(struct integrity_metrics_data *batt_data,
 
 	if (((soc < 5) && (soc > 0) && (batt_data->stress_frame > 4) && (batt_data->stress_below_5_fired == 0))
 		|| batt_data->stress_period != stress_period) {
-		memset(g_metrics_buf, 0, BATTERY_METRICS_BUFF_SIZE);
-		snprintf(g_metrics_buf, sizeof(g_metrics_buf),
-			 STRESS_REPORT_STRING, stress_period,
-			 batt_data->stress_string, INTEGRITY_MODULE_VERSION);
-		log_to_metrics(ANDROID_LOG_INFO_LOCAL,
-			       INTEGRITY_BATTERY_MODULE, g_metrics_buf);
+		minerva_log_print(INTEGRITY_BATTERY_GROUP,
+				  STRESS_REPORT_SCHEMA,
+				  STRESS_REPORT_STRING,
+				  stress_period,
+				  batt_data->stress_string,
+				  INTEGRITY_MODULE_VERSION);
 
 		batt_data->stress_period = stress_period;
 		init_stress_metric(batt_data);
@@ -345,7 +363,6 @@ void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 {
 	unsigned long delta_elaps_sec;
 	unsigned long calc_elaps_sec = 0;
-	char g_metrics_buf[BATTERY_METRICS_BUFF_SIZE] = {0};
 
 	if (batt_metrics_first_run) {
 		batt_metrics_first_run = 0;
@@ -370,30 +387,26 @@ void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 	if ((chg_sts != batt_data->chg_sts)
 		|| (batt_data->elaps_sec > MAX_REPORTING_PERIOD)) {
 		if (batt_data->elaps_sec > 30) {
-			memset(g_metrics_buf, 0, BATTERY_METRICS_BUFF_SIZE);
-			snprintf(g_metrics_buf, sizeof(g_metrics_buf),
-				CHARGE_STATE_REPORT_STRING, batt_data->chg_sts,
-				batt_data->elaps_sec, batt_data->batt_volt_init,
-				batt_data->batt_volt_final, batt_volt,
-				batt_data->soc,
-				(batt_data->batt_temp_avg / 1000),
-				(batt_data->batt_temp_avg_virtual / 1000),
-				batt_data->batt_temp_peak,
-				batt_data->batt_temp_virtual_peak,
-				temp, cycle_count,
-				batt_data->usb_volt_peak,
-				batt_data->usb_volt,
-				batt_data->usb_volt_min,
-				(batt_data->usb_volt_avg / batt_data->elaps_sec),
-				batt_data->chg_type,
-				(batt_data->batt_volt_avg / batt_data->elaps_sec),
-				batt_data->fsoc,
-				batt_data->n_count,
-				INTEGRITY_MODULE_VERSION);
-
-			log_to_metrics(ANDROID_LOG_INFO_LOCAL,
-					INTEGRITY_BATTERY_MODULE,
-					g_metrics_buf);
+			minerva_log_print(INTEGRITY_BATTERY_GROUP,
+					  CHARGE_STATE_REPORT_SCHEMA,
+					  CHARGE_STATE_REPORT_STRING, batt_data->chg_sts,
+					  batt_data->elaps_sec, batt_data->batt_volt_init,
+					  batt_data->batt_volt_final, batt_volt,
+					  batt_data->soc,
+					  (batt_data->batt_temp_avg / 1000),
+					  (batt_data->batt_temp_avg_virtual / 1000),
+					  batt_data->batt_temp_peak,
+					  batt_data->batt_temp_virtual_peak,
+					  temp, cycle_count,
+					  batt_data->usb_volt_peak,
+					  batt_data->usb_volt,
+					  batt_data->usb_volt_min,
+					  (batt_data->usb_volt_avg / batt_data->elaps_sec),
+					  batt_data->chg_type,
+					  (batt_data->batt_volt_avg / batt_data->elaps_sec),
+					  batt_data->fsoc,
+					  batt_data->n_count,
+					  INTEGRITY_MODULE_VERSION);
 		}
 		init_integrity_batt_data(batt_data, batt_volt,
 					 vusb, soc, temp,
@@ -432,25 +445,22 @@ void push_integrity_batt_data(unsigned long elaps_sec, unsigned int batt_volt,
 	batt_data->elaps_sec = calc_elaps_sec;
 
 #ifdef INTEGRITY_MODULE_DEBUG
-	memset(g_metrics_buf, 0, BATTERY_METRICS_BUFF_SIZE);
-	snprintf(g_metrics_buf, sizeof(g_metrics_buf),
-		 CHARGE_STATE_DEBUG_STRING,
-		 batt_data->chg_sts,
-		 chg_type,
-		 batt_data->batt_volt_avg,
-		 batt_data->usb_volt_avg,
-		 batt_data->usb_volt_min,
-		 batt_data->n_count,
-		 batt_data->elaps_sec,
-		 virtual_temp,
-		 elaps_sec,
-		 elaps_sec_start,
-		 elaps_sec_prev,
-		 delta_elaps_sec,
-		 calc_elaps_sec);
-
-	log_to_metrics(ANDROID_LOG_INFO_LOCAL, INTEGRITY_BATTERY_MODULE,
-		       g_metrics_buf);
+	minerva_log_print(INTEGRITY_BATTERY_GROUP,
+			  CHARGE_STATE_DEBUG_SCHEMA,
+			  CHARGE_STATE_DEBUG_STRING,
+			  batt_data->chg_sts,
+			  chg_type,
+			  batt_data->batt_volt_avg,
+			  batt_data->usb_volt_avg,
+			  batt_data->usb_volt_min,
+			  batt_data->n_count,
+			  batt_data->elaps_sec,
+			  virtual_temp,
+			  elaps_sec,
+			  elaps_sec_start,
+			  elaps_sec_prev,
+			  delta_elaps_sec,
+			  calc_elaps_sec);
 #endif
 
 	elaps_sec_prev = elaps_sec;

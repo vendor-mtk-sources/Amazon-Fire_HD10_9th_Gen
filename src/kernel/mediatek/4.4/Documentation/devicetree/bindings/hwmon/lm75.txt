@@ -1,0 +1,14 @@
+* LM75 thermometer.
+
+Optional properties:
+- temp_check_low_limit: The lower limit(hyst) for the temp sensor temperature check.
+- temp_check_high_limit: The higher limit for the temp sensor temperature check.
+
+Example:
+
+temperature-sensor@0 {
+		compatible = "lm75,tmp75";
+		reg = <0>;
+		temp_check_low_limit = <60000>
+		temp_check_high_limit = <87000>
+};

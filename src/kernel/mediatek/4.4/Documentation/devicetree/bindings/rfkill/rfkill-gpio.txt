@@ -1,0 +1,22 @@
+GPIO controlled RFKILL devices
+
+Required properties:
+- compatible	: Must be "rfkill-gpio".
+- rfkill-name	: Name of RFKILL device.
+- rfkill-type	: Type of RFKILL device: 1 for WiFi, 2 for BlueTooth, etc.
+		  See include/uapi/linux/rfkill.h for all valid values.
+- shutdown-gpios: GPIO phandle to set state
+- reset-gpios   : GPIO phandle to set state, at least one of the two GPIOs need to be defined.
+		  If both are provided, the "reset" gpio is toggled first.
+
+Optional properties:
+- default-state : Initial state set by driver (<1> = blocked <0> = unblocked).
+
+Example:
+
+	rfkill_bt {
+		compatible = "rfkill-gpio";
+		rfkill-name = "bluetooth";
+		rfkill-type = <2>;
+		shutdown-gpios = <&pio 1 0>;
+	};
